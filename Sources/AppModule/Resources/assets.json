@@ -1,0 +1,162 @@
+[
+  {
+    "symbol": "SPY",
+    "displayName": "SPDR S&P 500 ETF Trust",
+    "assetClass": "etf",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "index_etf",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "QQQ",
+    "displayName": "Invesco QQQ Trust",
+    "assetClass": "etf",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "index_etf",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "NVDA",
+    "displayName": "NVIDIA",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "TSLA",
+    "displayName": "Tesla",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "AMD",
+    "displayName": "Advanced Micro Devices",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "META",
+    "displayName": "Meta Platforms",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "AAPL",
+    "displayName": "Apple",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "MSFT",
+    "displayName": "Microsoft",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "AMZN",
+    "displayName": "Amazon",
+    "assetClass": "equity",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "mega_cap",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "GLD",
+    "displayName": "SPDR Gold Shares",
+    "assetClass": "commodity_proxy",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "commodity_proxy",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "USO",
+    "displayName": "United States Oil Fund",
+    "assetClass": "commodity_proxy",
+    "role": "tradeable",
+    "timezone": "America/New_York",
+    "modelGroup": "commodity_proxy",
+    "optionsEnabled": true,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "IWM",
+    "displayName": "iShares Russell 2000 ETF",
+    "assetClass": "etf",
+    "role": "context",
+    "timezone": "America/New_York",
+    "modelGroup": "context",
+    "optionsEnabled": false,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "VIX",
+    "displayName": "CBOE Volatility Index",
+    "assetClass": "index",
+    "role": "context",
+    "timezone": "America/Chicago",
+    "modelGroup": "context",
+    "optionsEnabled": false,
+    "dataSymbol": "VIX"
+  },
+  {
+    "symbol": "UUP",
+    "displayName": "Invesco DB US Dollar Index Bullish Fund",
+    "assetClass": "etf",
+    "role": "context",
+    "timezone": "America/New_York",
+    "modelGroup": "context",
+    "optionsEnabled": false,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "IEF",
+    "displayName": "iShares 7-10 Year Treasury Bond ETF",
+    "assetClass": "etf",
+    "role": "context",
+    "timezone": "America/New_York",
+    "modelGroup": "context",
+    "optionsEnabled": false,
+    "dataSymbol": null
+  },
+  {
+    "symbol": "BTC/USD",
+    "displayName": "Bitcoin / US Dollar",
+    "assetClass": "crypto",
+    "role": "context",
+    "timezone": "UTC",
+    "modelGroup": "crypto",
+    "optionsEnabled": false,
+    "dataSymbol": "BTC/USD"
+  }
+]
