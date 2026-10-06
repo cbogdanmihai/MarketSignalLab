@@ -1,65 +1,110 @@
-# MarketSignalLab 0.2.0 — Phase 2A Historical Ingestion
+# MarketSignalLab 0.3.0 — Phase 2B Research Dataset
 
 Native iPad Swift Playgrounds research app for market-data ingestion and signal research.
 
 ## Phase 1 complete
 
-- 16 / 16 configured symbols validate on the current Twelve Data account.
-- Global provider rate limiter protects the Basic 8-credits/minute quota.
-- QQQ live/recent fetch is working and persists locally.
-- App Info shows version, build, local/UTC clock and runtime details.
-- Diagnostics JSON supports direct ChatGPT collaboration.
+- Twelve Data provider integration.
+- Shared rate limiter for the Basic API quota.
+- 16 / 16 configured symbols validated.
+- Recent 1-minute bar fetch and local persistence.
+- Diagnostics JSON for ChatGPT collaboration.
+- App Info page with version/build/runtime details.
 
-## Phase 2A
+## Phase 2A complete
 
-### Historical downloader
+- Historical 1-minute downloader with date-range requests.
+- Three-day request chunks.
+- Empty market windows are skipped instead of aborting an import.
+- Partitioned local historical store.
+- Monthly JSON partitions with deduplication.
+- Existing Phase 1 data migrates automatically.
+- Local coverage stats: count, earliest timestamp and latest timestamp.
 
-The new **Historical Data** page downloads canonical 1-minute OHLCV bars for the currently selected asset.
+## Phase 2B
 
-- User-selectable start and end datetime.
-- 3-day request chunks.
-- Global Twelve Data pacing remains active.
-- Maximum 90 days per import run in this phase.
-- Progress, request count and received-bar count are visible in the UI.
-- Provider errors stop the import cleanly and are recorded in diagnostics.
-- Empty market periods can be skipped without aborting the run.
+The new **Research Dataset** page builds a causal intraday dataset entirely on the iPad.
 
-Twelve Data allows a maximum of 5,000 points in one historical response. Three-day chunks keep a 24/7 1-minute series below that ceiling while also working for US equities and ETFs.
+### Session normalization
 
-### Local historical store
+For equities and ETFs, research rows use the regular US session:
 
-The old single-file JSON store has been replaced by a partitioned store:
+`09:30–16:00 America/New_York`
 
-`Application Support / MarketSignalLab / BarsV2 / <symbol> / <timeframe> / YYYY-MM.json`
+Crypto uses UTC 24/7 calendar days.
 
-- Bars are deduplicated by canonical bar ID.
-- Partitions are monthly.
-- Existing Phase 1 JSON files are migrated automatically when first loaded.
-- The UI exposes local count, earliest bar and latest bar.
-- Diagnostics include historical download state and storage coverage.
+Rows never mix rolling features across separate equity sessions.
 
-## Current universe
+### Feature set
 
-Tradeable:
-SPY, QQQ, NVDA, TSLA, AMD, META, AAPL, MSFT, AMZN, GLD, USO.
+Current numeric predictors:
 
-Context:
-IWM, VIXY, UUP, IEF, BTC/USD.
+- minute of session
+- normalized session progress
+- returns: 1m, 5m, 15m, 30m, 60m
+- candle range / close
+- ATR(14) / close
+- realized volatility over 20 one-minute returns
+- volume z-score over 20 bars
+- distance to SMA20
+- distance to SMA50
+- distance to running session high
+- distance to running session low
+- distance to causal session VWAP
 
-## Test workflow
+Every feature is causal: it uses only the current bar and prior bars.
+
+### Labels
+
+Default Phase 2B target/stop labels:
+
+- target: +0.75%
+- stop: -0.35%
+- horizon: 90 minutes
+
+Both LONG and SHORT outcomes are computed independently.
+
+Outcomes:
+
+- `target`
+- `stop`
+- `timeout`
+- `ambiguous`
+
+If target and stop are both touched in the same 1-minute candle, the row is marked `ambiguous` rather than inventing an intrabar path.
+
+The dataset also records:
+
+- future return at the horizon
+- MFE across the full horizon
+- MAE across the full horizon
+
+### Walk-forward validation
+
+With enough rows, the app creates three expanding chronological folds.
+
+Each fold contains:
+
+- train
+- validation
+- test
+
+A 90-minute purge is applied before validation/test boundaries to reduce target leakage from overlapping label horizons.
+
+There are no random train/test splits.
+
+## Current test workflow
 
 1. Pull latest `main`.
-2. Open **App Info** and confirm **Version 0.2.0 / Build 7**.
+2. Confirm **App Info → Version 0.3.0 / Build 10**.
 3. Select **QQQ**.
-4. Open **Historical Data**.
-5. Keep the default 7-day range for the first test.
-6. Tap **Download Historical Data** and let it finish.
+4. Open **Research Dataset**.
+5. Tap **Build Research Dataset**.
+6. Review row count, target rates and walk-forward folds.
 7. Prepare and share Diagnostics.
 
 ## Next
 
-Phase 2B builds the first local research dataset from stored bars:
-
-`canonical bars → session normalization → features → target/stop labels → walk-forward splits`
+Phase 2C trains the first calibrated local baseline model and evaluates it strictly on the walk-forward folds before any prediction is exposed as a trading signal.
 
 The project remains signal/research only. No broker execution is implemented.
