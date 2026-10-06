@@ -93,8 +93,16 @@ struct TwelveDataProvider: MarketDataProvider {
             throw MarketDataError.decoding(error.localizedDescription)
         }
 
-        guard let timezone = TimeZone(identifier: payload.meta.exchangeTimezone) else {
-            throw MarketDataError.invalidTimezone(payload.meta.exchangeTimezone)
+        let timezoneIdentifier =
+            payload.meta.exchangeTimezone
+            ?? asset.timezone
+
+        guard let timezone = TimeZone(
+            identifier: timezoneIdentifier
+        ) else {
+            throw MarketDataError.invalidTimezone(
+                timezoneIdentifier
+            )
         }
 
         let formatter = DateFormatter()
@@ -137,9 +145,9 @@ struct TwelveDataProvider: MarketDataProvider {
 
 private struct TwelveDataResponse: Decodable {
     struct Meta: Decodable {
-        let symbol: String
+        let symbol: String?
         let interval: String
-        let exchangeTimezone: String
+        let exchangeTimezone: String?
 
         enum CodingKeys: String, CodingKey {
             case symbol
