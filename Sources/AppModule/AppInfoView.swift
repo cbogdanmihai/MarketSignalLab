@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.6.5"
-    private let fallbackBuild = "31"
-    private let releaseName = "Chart 3.4 — Non-Blocking Startup"
+    private let fallbackVersion = "0.7.0"
+    private let fallbackBuild = "32"
+    private let releaseName = "Phase 2C.1 — Baseline + Data Operations"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -207,6 +207,58 @@ struct AppInfoView: View {
                             store.researchSummary?.usesLockedPolicy == true
                             ? "Yes"
                             : "No"
+                    )
+
+                    LabeledContent(
+                        "Baseline",
+                        value:
+                            store.baselineResult == nil
+                            ? "Not run"
+                            : (
+                                store.baselineResult?
+                                    .passesInitialGate
+                                == true
+                                ? "PASS"
+                                : "REVIEW"
+                            )
+                    )
+
+                    LabeledContent(
+                        "LONG Brier skill",
+                        value:
+                            store.baselineResult
+                            .map {
+                                String(
+                                    format:
+                                        "%.1f%%",
+                                    $0.meanLongSkill
+                                        * 100
+                                )
+                            }
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "SHORT Brier skill",
+                        value:
+                            store.baselineResult
+                            .map {
+                                String(
+                                    format:
+                                        "%.1f%%",
+                                    $0.meanShortSkill
+                                        * 100
+                                )
+                            }
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "Bulk history",
+                        value:
+                            store.isDownloadingAllHistory
+                            ? "\(store.historyBatchCompletedAssets) / \(store.historyBatchTotalAssets)"
+                            : "Idle"
                     )
                 }
 
