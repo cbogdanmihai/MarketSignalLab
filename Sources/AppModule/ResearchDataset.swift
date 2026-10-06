@@ -608,10 +608,6 @@ enum ResearchDatasetBuilder {
                     }
                 }
 
-                if longOutcome != nil,
-                   shortOutcome != nil {
-                    break
-                }
             }
         }
 
