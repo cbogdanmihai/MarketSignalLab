@@ -1,88 +1,111 @@
-# MarketSignalLab 0.3.5 — Phase 2B.5 Label Calibration
+# MarketSignalLab 0.4.0 — Professional Research Terminal
 
-Native iPad Swift Playgrounds research app for market-data ingestion and signal research.
+Native iPad Swift Playgrounds research terminal for market-data ingestion, chart analysis, label research and walk-forward model preparation.
 
-## Completed foundation
+## Frontend redesign
 
-- Twelve Data ingestion with shared Basic-plan pacing.
-- 16 configured tradeable/context symbols validated.
-- Partitioned local 1-minute historical store with deduplication.
-- Session-normalized causal feature pipeline.
-- Target-before-stop labels with explicit ambiguous-candle handling.
-- Session-safe chronological walk-forward folds.
-- Diagnostics JSON and App Info collaboration/runtime pages.
+Version 0.4.0 replaces the prototype navigation with a compact research-terminal shell inspired by professional trading workspaces.
 
-## Phase 2B.5 — Label calibration
+The design principles are:
 
-The **Research Dataset** page now includes a **Calibrate Label Policies** step before model training.
+- a persistent watchlist at the left edge;
+- a small number of stable workspaces instead of many modal pages;
+- symbol selection synchronized across Chart, Research and Data;
+- chart controls directly above the chart;
+- research results summarized as readable metrics before exposing details;
+- cross-symbol research available from one screen.
 
-The calibration engine compares ten candidate label policies:
+## Workspaces
 
-Fixed percentage candidates:
+### Chart
 
-- 0.45% target / 0.25% stop
-- 0.55% / 0.30%
-- 0.65% / 0.35%
-- 0.75% / 0.35% baseline
-- 0.85% / 0.40%
+The Chart workspace now includes:
 
-ATR-adaptive candidates:
+- candlestick and line modes;
+- 1m, 5m, 15m, 30m and 1h aggregation from locally stored 1-minute bars;
+- 1D, 5D, 1M and ALL ranges;
+- SMA20, SMA50, VWAP and Volume toggles;
+- OHLC inspection;
+- draggable crosshair;
+- dynamically scaled price axis;
+- compact quote/status header;
+- direct Refresh and Historical Data actions.
 
-- 4.0× ATR target / 2.0× ATR stop
-- 5.0× / 2.5×
-- 6.0× / 3.0×
-- 7.0× / 3.5×
-- 8.0× / 4.0×
+This is implemented with native Swift Charts and local aggregation. No broker execution is included.
 
-All candidates currently use a 90-minute horizon.
+### Research
 
-### Leakage rule
+The new Research Lab has two scopes.
 
-Label-policy ranking uses only the earliest walk-forward **train + validation** window.
+**Symbol**
 
-No session that belongs to any walk-forward test block is used to rank the policies.
+Choose any symbol independently and view:
 
-This makes label calibration a pre-test model-design step rather than an optimization against future test outcomes.
+- local-data coverage;
+- session count;
+- research-row count;
+- feature count;
+- walk-forward folds;
+- LONG/SHORT target quality;
+- label calibration status;
+- ranked calibration candidates.
 
-### Acceptance band
+**All Symbols**
 
-A candidate is accepted when:
+The cross-symbol matrix shows:
 
-- LONG target-event rate is 8–20%
-- SHORT target-event rate is 8–20%
-- ambiguous-bar rate is at most 1%
+- local bars;
+- sessions;
+- labeled rows;
+- LONG/SHORT target rates;
+- calibration status.
 
-Ranking additionally considers:
+**Build All Local** creates research summaries for every watchlist symbol that already has at least 300 local 1-minute bars.
 
-- LONG/SHORT target balance
-- session-to-session target-rate stability
-- ambiguity
-- closeness to the target-event acceptance band
+### Data
 
-The UI also reports a **payoff proxy**. This is a label-quality diagnostic, not a strategy backtest:
+Data Center centralizes:
 
-- target → +target threshold
-- stop → -stop threshold
-- timeout → horizon return
-- ambiguous → zero
+- provider availability counts;
+- local-history coverage by symbol;
+- historical downloader entry points;
+- universe validation.
 
-### Next decision
+## Custom watchlist symbols
 
-Run calibration on QQQ after the 60-day historical import.
+Use **Add Ticker** from the sidebar.
 
-If a policy passes the acceptance band, the next change will lock that policy and rebuild the complete dataset before Phase 2C.
+Custom symbols:
 
-If none passes, expand/refine the candidate grid rather than training a classifier on a sparse target definition.
+- are persisted locally on the iPad;
+- are merged with the built-in universe;
+- can be Equity, ETF, Crypto, Index or Commodity proxy;
+- are checked with Twelve Data when an API key is available;
+- can be removed from the watchlist through the row context menu.
+
+The API key remains in Keychain and is never written to the repository.
+
+## Existing research pipeline
+
+The existing research foundation remains intact:
+
+- partitioned historical storage;
+- causal features;
+- target-before-stop labels;
+- session-safe walk-forward folds;
+- fixed and ATR-adaptive label-policy calibration;
+- test sessions excluded from policy ranking;
+- diagnostics JSON.
 
 ## Current test workflow
 
 1. Pull latest `main`.
-2. Confirm **App Info → Version 0.3.5 / Build 15**.
-3. Select QQQ.
-4. Open **Research Dataset**.
-5. Build Research Dataset if needed.
-6. Tap **Calibrate Label Policies**.
-7. Review the recommendation and candidate ranking.
-8. Prepare and share Diagnostics.
+2. Confirm **App Info → Version 0.4.0 / Build 16**.
+3. Open **Chart** and verify candlestick/line switching, interval controls, range controls and indicator toggles.
+4. Drag across the chart to inspect candles with the crosshair.
+5. Tap **Add Ticker**, add one test symbol, then verify it appears in the watchlist.
+6. Open **Research → Symbol** and switch between QQQ and another ticker.
+7. Open **Research → All Symbols** and run **Build All Local**.
+8. Open **Data** and verify local history coverage.
 
 The project remains signal/research only. No broker execution is implemented.
