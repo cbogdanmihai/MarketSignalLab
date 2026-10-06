@@ -1076,11 +1076,7 @@ final class AppStore: ObservableObject {
                 ) {
                     ResearchDatasetBuilder.build(
                         asset: asset,
-                        bars: localBars,
-                        labelPolicy:
-                            lockedLabelPolicies[
-                                asset.symbol
-                            ]?.policy
+                        bars: localBars
                     )
                 }.value
 
@@ -1317,7 +1313,11 @@ final class AppStore: ObservableObject {
                 ) {
                     ResearchDatasetBuilder.build(
                         asset: asset,
-                        bars: localBars
+                        bars: localBars,
+                        labelPolicy:
+                            lockedLabelPolicies[
+                                asset.symbol
+                            ]?.policy
                     )
                 }.value
 
