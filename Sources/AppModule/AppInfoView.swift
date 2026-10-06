@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.1.4"
-    private let fallbackBuild = "5"
-    private let releaseName = "Phase 1.4 — App Info"
+    private let fallbackVersion = "0.2.0"
+    private let fallbackBuild = "7"
+    private let releaseName = "Phase 2A — Historical Ingestion"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -148,7 +148,14 @@ struct AppInfoView: View {
 
                     LabeledContent(
                         "Selected local bars",
-                        value: String(store.bars.count)
+                        value: String(store.storageStats.count)
+                    )
+
+                    LabeledContent(
+                        "History progress",
+                        value: store.isDownloadingHistory
+                            ? "\(store.historyCompletedChunks) / \(store.historyTotalChunks)"
+                            : "Idle"
                     )
                 }
 
