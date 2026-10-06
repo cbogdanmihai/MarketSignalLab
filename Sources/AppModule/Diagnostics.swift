@@ -40,6 +40,13 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let researchShortTargetRate: Double?
     let researchMessage: String
 
+    let labelCalibrationCandidateCount: Int
+    let labelCalibrationRecommendedPolicy: String?
+    let labelCalibrationAccepted: Bool?
+    let labelCalibrationLongTargetRate: Double?
+    let labelCalibrationShortTargetRate: Double?
+    let labelCalibrationMessage: String
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
