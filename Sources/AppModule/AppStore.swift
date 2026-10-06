@@ -447,6 +447,11 @@ final class AppStore: ObservableObject {
         }
 
         isDownloadingHistory = true
+
+        labelCalibration = nil
+        labelCalibrationMessage =
+            "Historical data changed; recalibrate label policies after rebuilding the research dataset."
+
         historyCompletedChunks = 0
         historyBarsSaved = 0
 
@@ -852,6 +857,18 @@ final class AppStore: ObservableObject {
             researchLongTargetRate: researchSummary?.longTargetRate,
             researchShortTargetRate: researchSummary?.shortTargetRate,
             researchMessage: researchMessage,
+            labelCalibrationCandidateCount:
+                labelCalibration?.candidates.count ?? 0,
+            labelCalibrationRecommendedPolicy:
+                labelCalibration?.recommended?.policy.name,
+            labelCalibrationAccepted:
+                labelCalibration?.recommended?.meetsAcceptanceBand,
+            labelCalibrationLongTargetRate:
+                labelCalibration?.recommended?.longTargetRate,
+            labelCalibrationShortTargetRate:
+                labelCalibration?.recommended?.shortTargetRate,
+            labelCalibrationMessage:
+                labelCalibrationMessage,
             availableCount: availableCount,
             restrictedCount: restrictedCount,
             unavailableCount: unavailableCount,
