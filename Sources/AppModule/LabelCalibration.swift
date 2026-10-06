@@ -217,18 +217,23 @@ enum LabelCalibrationEngine {
         let calibrationEnd =
             firstFold.validationEnd
 
-        let ordered = bars
-            .filter {
-                $0.timestamp <= calibrationEnd
-            }
-            .sorted {
-                $0.timestamp < $1.timestamp
+        let allSessions = sessionizedBars(
+            asset: asset,
+            bars: bars
+        )
+
+        // The fold boundary is the last eligible research-row timestamp.
+        // Keep the full raw bar session so labels near that boundary still
+        // have their complete forward horizon without touching a test day.
+        let sessions = allSessions.filter { session in
+            guard let first =
+                    session.bars.first?.timestamp
+            else {
+                return false
             }
 
-        let sessions = sessionizedBars(
-            asset: asset,
-            bars: ordered
-        )
+            return first <= calibrationEnd
+        }
 
         guard
             let calibrationStart =
