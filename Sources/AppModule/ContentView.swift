@@ -139,10 +139,6 @@ struct ContentView: View {
             \.terminalDensityScale,
             density.layoutScale
         )
-        .task {
-            await store.loadLocalBars()
-            await store.refreshStorageOverview()
-        }
     }
 
     private var sidebar: some View {
