@@ -179,6 +179,10 @@ struct TwelveDataProvider: MarketDataProvider {
                 if let message = providerError?.message,
                    !message.isEmpty {
 
+                    if isNoDataMessage(message) {
+                        throw MarketDataError.noData
+                    }
+
                     throw MarketDataError.provider(
                         message
                     )
@@ -209,6 +213,10 @@ struct TwelveDataProvider: MarketDataProvider {
                     message: message,
                     retryAfter: 65
                 )
+            }
+
+            if isNoDataMessage(message) {
+                throw MarketDataError.noData
             }
 
             throw MarketDataError.provider(
@@ -285,6 +293,25 @@ struct TwelveDataProvider: MarketDataProvider {
         }
 
         return result
+    }
+
+    private func isNoDataMessage(
+        _ message: String
+    ) -> Bool {
+        let text = message.lowercased()
+
+        return text.contains(
+            "no data is available"
+        )
+        || text.contains(
+            "no data available"
+        )
+        || text.contains(
+            "no data for"
+        )
+        || text.contains(
+            "no data found"
+        )
     }
 
     private func providerDateString(
