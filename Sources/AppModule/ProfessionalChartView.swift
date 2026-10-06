@@ -272,7 +272,12 @@ struct ProfessionalChartView: View {
 
     private var yDomain: ClosedRange<Double> {
         guard !visibleBarsForScale.isEmpty else {
-            return 0...1
+            return ClosedRange(
+                uncheckedBounds: (
+                    lower: 0.0,
+                    upper: 1.0
+                )
+            )
         }
 
         let low =
