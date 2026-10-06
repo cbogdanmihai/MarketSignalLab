@@ -521,8 +521,7 @@ struct ResearchHubView: View {
                             value:
                                 recommended.longTargetRate,
                             desired:
-                                calibration.targetBandLow
-                                ...calibration.targetBandHigh
+                                calibration.targetBandLow...calibration.targetBandHigh
                         )
 
                         RateMetric(
