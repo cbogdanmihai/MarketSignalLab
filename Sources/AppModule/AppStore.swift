@@ -1308,6 +1308,11 @@ final class AppStore: ObservableObject {
                     timeframe: "1min"
                 )
 
+                let lockedPolicy =
+                    lockedLabelPolicies[
+                        asset.symbol
+                    ]?.policy
+
                 let result = await Task.detached(
                     priority: .userInitiated
                 ) {
@@ -1315,9 +1320,7 @@ final class AppStore: ObservableObject {
                         asset: asset,
                         bars: localBars,
                         labelPolicy:
-                            lockedLabelPolicies[
-                                asset.symbol
-                            ]?.policy
+                            lockedPolicy
                     )
                 }.value
 
