@@ -29,3 +29,5 @@ jobs:
           TARGET="arm64-apple-ios17.0-simulator"
           SOURCES=$(find Sources/AppModule -maxdepth 1 -name '*.swift' -print | sort)
           xcrun swiftc -typecheck -parse-as-library -sdk "$SDK_PATH" -target "$TARGET" $SOURCES
+
+# CI probe
