@@ -1,0 +1,31 @@
+name: Swift iOS Typecheck
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  typecheck:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift version
+        run: |
+          xcrun swift --version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Typecheck all app sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          TARGET="arm64-apple-ios17.0-simulator"
+          SOURCES=$(find Sources/AppModule -maxdepth 1 -name '*.swift' -print | sort)
+          xcrun swiftc -typecheck -parse-as-library -sdk "$SDK_PATH" -target "$TARGET" $SOURCES
