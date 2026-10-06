@@ -241,11 +241,11 @@ struct ProfessionalChartView: View {
             return []
         }
 
+        let range =
+            visibleStartIndex...visibleEndIndex
+
         return Array(
-            chartBars[
-                visibleStartIndex
-                ...visibleEndIndex
-            ]
+            chartBars[range]
         )
     }
 
