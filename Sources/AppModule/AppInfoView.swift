@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.5.3"
-    private let fallbackBuild = "25"
-    private let releaseName = "Chart 2 — Scrollable History & Zoom"
+    private let fallbackVersion = "0.6.0"
+    private let fallbackBuild = "26"
+    private let releaseName = "Phase 2B.7 — Policy Lock"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -190,6 +190,21 @@ struct AppInfoView: View {
                         "Calibration accepted",
                         value:
                             store.labelCalibration?.recommended?.meetsAcceptanceBand == true
+                            ? "Yes"
+                            : "No"
+                    )
+
+                    LabeledContent(
+                        "Locked label policy",
+                        value:
+                            store.selectedLockedLabelPolicy?.policy.name
+                            ?? "None"
+                    )
+
+                    LabeledContent(
+                        "Dataset uses lock",
+                        value:
+                            store.researchSummary?.usesLockedPolicy == true
                             ? "Yes"
                             : "No"
                     )
