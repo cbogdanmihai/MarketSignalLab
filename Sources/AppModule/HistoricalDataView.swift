@@ -11,7 +11,7 @@ struct HistoricalDataView: View {
     private var startDate =
         Calendar.current.date(
             byAdding: .day,
-            value: -7,
+            value: -60,
             to: Date()
         ) ?? Date()
 
@@ -80,7 +80,7 @@ struct HistoricalDataView: View {
                     )
 
                     Text(
-                        "Phase 2A uses 3-day chunks for 1-minute data. This keeps each request below Twelve Data's 5,000-point response limit even for 24/7 crypto. One import is capped at 90 days."
+                        "The default research range is 60 calendar days. Phase 2A uses 3-day chunks for 1-minute data, keeping each response below Twelve Data's 5,000-point limit even for 24/7 crypto. One import is capped at 90 days."
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
