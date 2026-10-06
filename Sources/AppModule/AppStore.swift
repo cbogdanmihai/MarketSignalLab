@@ -1404,6 +1404,15 @@ final class AppStore: ObservableObject {
                 labelCalibrationMessage,
             labelCalibrationCandidates:
                 labelCalibration?.candidates ?? [],
+            lockedLabelPolicyName:
+                selectedLockedLabelPolicy?.policy.name,
+            lockedLabelPolicyID:
+                selectedLockedLabelPolicy?.policy.id,
+            lockedLabelPolicyAt:
+                selectedLockedLabelPolicy?.lockedAt,
+            researchUsesLockedPolicy:
+                researchSummary?.usesLockedPolicy
+                ?? false,
             availableCount: availableCount,
             restrictedCount: restrictedCount,
             unavailableCount: unavailableCount,
