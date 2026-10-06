@@ -103,6 +103,15 @@ struct ProfessionalChartView: View {
     @State
     private var selectedTimestamp: Date?
 
+    @State
+    private var scrollPosition = Date()
+
+    @State
+    private var zoomLevel = 1.0
+
+    @State
+    private var inspectionMode = false
+
     private var aggregatedBars: [MarketBar] {
         aggregate(
             bars: bars,
@@ -110,38 +119,80 @@ struct ProfessionalChartView: View {
         )
     }
 
-    private var rangedBars: [MarketBar] {
-        guard let sessions = range.sessions else {
-            return aggregatedBars
-        }
-
-        let barsPerSession: Int
-
-        if asset.assetClass == .crypto {
-            barsPerSession = max(
-                1,
-                1440 / interval.rawValue
-            )
-        } else {
-            barsPerSession = max(
-                1,
-                390 / interval.rawValue
-            )
-        }
-
-        let count = max(
-            barsPerSession * sessions,
-            1
+    private var chartBars: [MarketBar] {
+        // Keep enough history loaded for horizontal scrolling without
+        // asking Swift Charts to render an unbounded 1-minute archive.
+        Array(
+            aggregatedBars.suffix(5000)
         )
+    }
+
+    private var baseVisibleDuration: TimeInterval {
+        let day: TimeInterval =
+            24 * 60 * 60
+
+        switch range {
+        case .oneDay:
+            return asset.assetClass == .crypto
+            ? day
+            : 8 * 60 * 60
+
+        case .fiveDays:
+            return 7 * day
+
+        case .oneMonth:
+            return 31 * day
+
+        case .all:
+            guard
+                let first =
+                    chartBars.first?.timestamp,
+                let last =
+                    chartBars.last?.timestamp
+            else {
+                return day
+            }
+
+            return max(
+                last.timeIntervalSince(first),
+                day
+            )
+        }
+    }
+
+    private var visibleDuration: TimeInterval {
+        max(
+            baseVisibleDuration
+                / zoomLevel,
+            TimeInterval(
+                interval.rawValue * 60 * 3
+            )
+        )
+    }
+
+    private var visibleBarsForScale: [MarketBar] {
+        let end =
+            scrollPosition.addingTimeInterval(
+                visibleDuration
+            )
+
+        let visible = chartBars.filter {
+            $0.timestamp >= scrollPosition
+            && $0.timestamp <= end
+        }
+
+        if !visible.isEmpty {
+            return visible
+        }
 
         return Array(
-            aggregatedBars.suffix(count)
+            chartBars.suffix(60)
         )
     }
 
     private var points: [ProfessionalChartPoint] {
         buildPoints(
-            bars: rangedBars
+            bars: chartBars
         )
     }
 
@@ -166,12 +217,17 @@ struct ProfessionalChartView: View {
     }
 
     private var yDomain: ClosedRange<Double> {
-        guard !rangedBars.isEmpty else {
+        guard !visibleBarsForScale.isEmpty else {
             return 0...1
         }
 
-        let low = rangedBars.map(\.low).min() ?? 0
-        let high = rangedBars.map(\.high).max() ?? 1
+        let low =
+            visibleBarsForScale.map(\.low).min()
+            ?? 0
+
+        let high =
+            visibleBarsForScale.map(\.high).max()
+            ?? 1
 
         let rawRange = max(
             high - low,
@@ -197,13 +253,13 @@ struct ProfessionalChartView: View {
                 selectedBarStrip(
                     selectedPoint
                 )
-            } else if let last = rangedBars.last {
+            } else if let last = chartBars.last {
                 liveBarStrip(
                     last
                 )
             }
 
-            if rangedBars.count >= 2 {
+            if chartBars.count >= 2 {
                 priceChart
 
                 if showVolume {
@@ -221,6 +277,19 @@ struct ProfessionalChartView: View {
                 .frame(height: 360)
             }
         }
+        .onAppear {
+            scrollToLatest()
+        }
+        .onChange(
+            of: bars.last?.timestamp
+        ) { _, _ in
+            scrollToLatest()
+        }
+        .onChange(
+            of: zoomLevel
+        ) { _, _ in
+            clampScrollPosition()
+        }
     }
 
     private var toolbar: some View {
@@ -235,6 +304,7 @@ struct ProfessionalChartView: View {
                     Button(item.label) {
                         interval = item
                         selectedTimestamp = nil
+                        scrollToLatest()
                     }
                     .buttonStyle(
                         .bordered
@@ -296,6 +366,33 @@ struct ProfessionalChartView: View {
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+
+                Button {
+                    inspectionMode.toggle()
+
+                    if !inspectionMode {
+                        selectedTimestamp = nil
+                    }
+                } label: {
+                    Image(
+                        systemName:
+                            inspectionMode
+                            ? "scope"
+                            : "scope"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(
+                    inspectionMode
+                    ? .accentColor
+                    : .secondary
+                )
+                .help(
+                    inspectionMode
+                    ? "Crosshair on"
+                    : "Crosshair off"
+                )
             }
 
             HStack(spacing: 8) {
@@ -305,6 +402,7 @@ struct ProfessionalChartView: View {
                     Button(item.rawValue) {
                         range = item
                         selectedTimestamp = nil
+                        scrollToLatest()
                     }
                     .buttonStyle(.borderless)
                     .font(
@@ -323,8 +421,36 @@ struct ProfessionalChartView: View {
 
                 Spacer()
 
+                HStack(spacing: 4) {
+                    Button {
+                        zoomLevel = max(
+                            0.5,
+                            zoomLevel / 1.4
+                        )
+                    } label: {
+                        Image(
+                            systemName:
+                                "minus.magnifyingglass"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+
+                    Button {
+                        zoomLevel = min(
+                            4.0,
+                            zoomLevel * 1.4
+                        )
+                    } label: {
+                        Image(
+                            systemName:
+                                "plus.magnifyingglass"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                }
+
                 Text(
-                    "\(rangedBars.count) bars · \(interval.label)"
+                    "\(chartBars.count) loaded · \(interval.label) · drag to scroll"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -524,6 +650,15 @@ struct ProfessionalChartView: View {
         .chartYScale(
             domain: yDomain
         )
+        .chartScrollableAxes(
+            .horizontal
+        )
+        .chartXVisibleDomain(
+            length: visibleDuration
+        )
+        .chartScrollPosition(
+            x: $scrollPosition
+        )
         .chartXAxis {
             AxisMarks(
                 values: .automatic(
@@ -559,41 +694,48 @@ struct ProfessionalChartView: View {
         }
         .chartOverlay { proxy in
             GeometryReader { geometry in
-                Rectangle()
-                    .fill(.clear)
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(
-                            minimumDistance: 0
+                if inspectionMode {
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(
+                            Rectangle()
                         )
-                        .onChanged { value in
-                            guard let anchor =
-                                    proxy.plotFrame
-                            else {
-                                return
+                        .gesture(
+                            DragGesture(
+                                minimumDistance: 0
+                            )
+                            .onChanged { value in
+                                guard let anchor =
+                                        proxy.plotFrame
+                                else {
+                                    return
+                                }
+
+                                let plotFrame =
+                                    geometry[anchor]
+
+                                let x =
+                                    value.location.x
+                                    - plotFrame.origin.x
+
+                                if let date: Date =
+                                    proxy.value(
+                                        atX: x
+                                    ) {
+
+                                    selectedTimestamp =
+                                        date
+                                }
                             }
+                        )
 
-                            let plotFrame =
-                                geometry[anchor]
-
-                            let x =
-                                value.location.x
-                                - plotFrame.origin.x
-
-                            if let date: Date =
-                                proxy.value(
-                                    atX: x
-                                ) {
-
-                                selectedTimestamp =
-                                    date
-                            }
-                        }
-                        .onEnded { _ in
-                            // Keep the last crosshair position,
-                            // like a pinned inspection point.
-                        }
-                    )
+                } else {
+                    Rectangle()
+                        .fill(.clear)
+                        .allowsHitTesting(
+                            false
+                        )
+                }
             }
         }
         .frame(
@@ -603,7 +745,7 @@ struct ProfessionalChartView: View {
     }
 
     private var volumeChart: some View {
-        Chart(rangedBars) { bar in
+        Chart(chartBars) { bar in
             BarMark(
                 x: .value(
                     "Time",
@@ -619,6 +761,15 @@ struct ProfessionalChartView: View {
                     .opacity(0.5)
             )
         }
+        .chartScrollableAxes(
+            .horizontal
+        )
+        .chartXVisibleDomain(
+            length: visibleDuration
+        )
+        .chartScrollPosition(
+            x: $scrollPosition
+        )
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(
@@ -740,6 +891,55 @@ struct ProfessionalChartView: View {
         bar.close >= bar.open
         ? .green
         : .red
+    }
+
+    private func scrollToLatest() {
+        guard
+            let first =
+                chartBars.first?.timestamp,
+            let last =
+                chartBars.last?.timestamp
+        else {
+            return
+        }
+
+        let candidate =
+            last.addingTimeInterval(
+                -visibleDuration
+            )
+
+        scrollPosition = max(
+            first,
+            candidate
+        )
+    }
+
+    private func clampScrollPosition() {
+        guard
+            let first =
+                chartBars.first?.timestamp,
+            let last =
+                chartBars.last?.timestamp
+        else {
+            return
+        }
+
+        let latestStart =
+            max(
+                first,
+                last.addingTimeInterval(
+                    -visibleDuration
+                )
+            )
+
+        if scrollPosition < first {
+            scrollPosition = first
+        }
+
+        if scrollPosition > latestStart {
+            scrollPosition =
+                latestStart
+        }
     }
 
     private func aggregate(
