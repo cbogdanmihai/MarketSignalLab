@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import OSLog
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -121,7 +122,16 @@ final class AppStore: ObservableObject {
     private let lockedLabelPoliciesDefaultsKey =
         "MarketSignalLab.LockedLabelPolicies.v1"
 
-    private var diagnosticEvents: [DiagnosticEvent] = []
+    @Published private(set)
+    var diagnosticEvents: [DiagnosticEvent] = []
+
+    private static let logger =
+        Logger(
+            subsystem:
+                "MarketSignalLab",
+            category:
+                "Runtime"
+        )
 
     init(
         repository: any BarRepository = PartitionedJSONBarRepository()
@@ -1463,21 +1473,55 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func clearDiagnosticEvents() {
+        diagnosticEvents.removeAll()
+
+        log(
+            "info",
+            "Debug console cleared."
+        )
+    }
+
     private func log(
         _ level: String,
         _ message: String
     ) {
+        let normalized =
+            level.lowercased()
+
+        let line =
+            "[MarketSignalLab][\(normalized.uppercased())] \(message)"
+
+        print(line)
+
+        switch normalized {
+        case "error":
+            Self.logger.error(
+                "\(message, privacy: .public)"
+            )
+
+        case "warning":
+            Self.logger.warning(
+                "\(message, privacy: .public)"
+            )
+
+        default:
+            Self.logger.info(
+                "\(message, privacy: .public)"
+            )
+        }
+
         diagnosticEvents.append(
             DiagnosticEvent(
                 timestamp: Date(),
-                level: level,
+                level: normalized,
                 message: message
             )
         )
 
-        if diagnosticEvents.count > 200 {
+        if diagnosticEvents.count > 300 {
             diagnosticEvents.removeFirst(
-                diagnosticEvents.count - 200
+                diagnosticEvents.count - 300
             )
         }
     }
