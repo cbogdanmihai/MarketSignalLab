@@ -273,6 +273,49 @@ struct ResearchHubView: View {
                 || store.isBuildingResearchDataset
                 || store.researchFolds.isEmpty
             )
+
+            if let asset = store.selectedAsset {
+                if store.lockedLabelPolicy(
+                    for: asset
+                ) != nil {
+
+                    Label(
+                        "Policy Locked",
+                        systemImage:
+                            "lock.fill"
+                    )
+                    .foregroundStyle(
+                        .green
+                    )
+
+                } else if store.labelCalibration?
+                    .recommended?
+                    .meetsAcceptanceBand
+                    == true {
+
+                    Button {
+                        Task {
+                            await store.lockRecommendedLabelPolicy()
+                        }
+                    } label: {
+                        Label(
+                            store.isLockingLabelPolicy
+                            ? "Locking…"
+                            : "Lock & Rebuild",
+                            systemImage:
+                                "lock.fill"
+                        )
+                    }
+                    .buttonStyle(
+                        .borderedProminent
+                    )
+                    .tint(.green)
+                    .disabled(
+                        store.isLockingLabelPolicy
+                        || store.isBuildingResearchDataset
+                    )
+                }
+            }
         }
         .padding(14)
         .background(
@@ -348,9 +391,11 @@ struct ResearchHubView: View {
                 value:
                     calibrationStatus,
                 subtitle:
-                    store.labelCalibration?
-                    .recommended?
+                    store.selectedLockedLabelPolicy?
                     .policy.name
+                    ?? store.labelCalibration?
+                        .recommended?
+                        .policy.name
                     ?? "Not calibrated"
             )
         }
@@ -513,7 +558,16 @@ struct ResearchHubView: View {
         let color: Color
         let icon: String
 
-        if summary.sessionCount < 18 {
+        if let locked =
+            store.selectedLockedLabelPolicy {
+
+            title = "Policy locked"
+            detail =
+                "\(locked.policy.name) is frozen for this symbol and the research dataset uses the locked policy. Phase 2C baseline training is now allowed."
+            color = .green
+            icon = "lock.shield.fill"
+
+        } else if summary.sessionCount < 18 {
             title = "Collect more history"
             detail =
                 "Only \(summary.sessionCount) independent sessions are available. Keep model training blocked."
@@ -635,6 +689,57 @@ struct ResearchHubView: View {
                 )
                 .font(.callout)
                 .textSelection(.enabled)
+
+                if let locked =
+                    store.selectedLockedLabelPolicy {
+
+                    HStack(
+                        alignment: .top,
+                        spacing: 8
+                    ) {
+                        Image(
+                            systemName:
+                                "lock.fill"
+                        )
+                        .foregroundStyle(
+                            .green
+                        )
+
+                        VStack(
+                            alignment: .leading,
+                            spacing: 2
+                        ) {
+                            Text(
+                                "Locked for \(locked.symbol)"
+                            )
+                            .font(
+                                .caption.bold()
+                            )
+                            .foregroundStyle(
+                                .green
+                            )
+
+                            Text(
+                                locked.policy.name
+                            )
+                            .font(.caption)
+
+                            Text(
+                                "Locked \(locked.lockedAt.formatted(date: .abbreviated, time: .shortened)) · calibration score \(locked.calibrationScore, specifier: "%.1f")"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(
+                                .secondary
+                            )
+                        }
+
+                        Spacer()
+                    }
+                    .padding(
+                        .vertical,
+                        4
+                    )
+                }
 
                 if store.isCalibratingLabels {
                     ProgressView()
@@ -1098,6 +1203,12 @@ struct ResearchHubView: View {
     }
 
     private var calibrationStatus: String {
+        if store.selectedLockedLabelPolicy
+            != nil {
+
+            return "Locked"
+        }
+
         guard let recommended =
                 store.labelCalibration?
                 .recommended
