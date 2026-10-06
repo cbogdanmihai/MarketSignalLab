@@ -1,17 +1,21 @@
 import SwiftUI
 import Charts
 
+private enum RootSheet: String, Identifiable {
+    case appInfo
+    case historicalData
+    case researchDataset
+
+    var id: String {
+        rawValue
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
 
     @State
-    private var showingAppInfo = false
-
-    @State
-    private var showingHistoricalData = false
-
-    @State
-    private var showingResearchDataset = false
+    private var activeSheet: RootSheet?
 
     var body: some View {
         NavigationSplitView {
@@ -31,7 +35,7 @@ struct ContentView: View {
             ) {
                 Section("Provider") {
                     Button {
-                        showingAppInfo = true
+                        activeSheet = .appInfo
                     } label: {
                         Label(
                             "App Info",
@@ -40,7 +44,7 @@ struct ContentView: View {
                     }
 
                     Button {
-                        showingHistoricalData = true
+                        activeSheet = .historicalData
                     } label: {
                         Label(
                             "Historical Data",
@@ -49,7 +53,7 @@ struct ContentView: View {
                     }
 
                     Button {
-                        showingResearchDataset = true
+                        activeSheet = .researchDataset
                     } label: {
                         Label(
                             "Research Dataset",
@@ -163,22 +167,21 @@ struct ContentView: View {
             await store.loadLocalBars()
         }
         .sheet(
-            isPresented: $showingAppInfo
-        ) {
-            AppInfoView()
-                .environmentObject(store)
-        }
-        .sheet(
-            isPresented: $showingHistoricalData
-        ) {
-            HistoricalDataView()
-                .environmentObject(store)
-        }
-        .sheet(
-            isPresented: $showingResearchDataset
-        ) {
-            ResearchDatasetView()
-                .environmentObject(store)
+            item: $activeSheet
+        ) { sheet in
+            switch sheet {
+            case .appInfo:
+                AppInfoView()
+                    .environmentObject(store)
+
+            case .historicalData:
+                HistoricalDataView()
+                    .environmentObject(store)
+
+            case .researchDataset:
+                ResearchDatasetView()
+                    .environmentObject(store)
+            }
         }
     }
 }
