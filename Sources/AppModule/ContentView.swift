@@ -7,6 +7,9 @@ struct ContentView: View {
     @State
     private var showingAppInfo = false
 
+    @State
+    private var showingHistoricalData = false
+
     var body: some View {
         NavigationSplitView {
             List(
@@ -30,6 +33,15 @@ struct ContentView: View {
                         Label(
                             "App Info",
                             systemImage: "info.circle"
+                        )
+                    }
+
+                    Button {
+                        showingHistoricalData = true
+                    } label: {
+                        Label(
+                            "Historical Data",
+                            systemImage: "clock.arrow.circlepath"
                         )
                     }
 
@@ -142,6 +154,12 @@ struct ContentView: View {
             isPresented: $showingAppInfo
         ) {
             AppInfoView()
+                .environmentObject(store)
+        }
+        .sheet(
+            isPresented: $showingHistoricalData
+        ) {
+            HistoricalDataView()
                 .environmentObject(store)
         }
     }
@@ -467,10 +485,10 @@ private struct AssetDashboard: View {
                     )
                 }
 
-                GroupBox("Next") {
+                GroupBox("Phase 2") {
                     Text(
                         """
-                        Phase 2 adds historical data ingestion, feature engineering, labels and the first local ML research dataset.
+                        Historical ingestion is now active. Use Historical Data to build the local 1-minute research store; feature engineering and labels come next.
                         """
                     )
                     .frame(
