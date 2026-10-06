@@ -4,6 +4,9 @@ struct DataWorkspaceView: View {
     @EnvironmentObject
     private var store: AppStore
 
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     @State
     private var showingHistoricalData = false
 
@@ -19,12 +22,7 @@ struct DataWorkspaceView: View {
                         spacing: 4
                     ) {
                         Text("Data Center")
-                            .font(
-                                .system(
-                                    size: 28,
-                                    weight: .bold
-                                )
-                            )
+                            .font(.title.bold())
 
                         Text(
                             "Provider health, local history coverage and ingestion controls"
@@ -61,6 +59,8 @@ struct DataWorkspaceView: View {
                     .disabled(
                         store.isValidatingUniverse
                     )
+
+                    TerminalDensityControl()
                 }
 
                 LazyVGrid(
@@ -199,7 +199,9 @@ struct DataWorkspaceView: View {
                         Divider()
                     }
                 }
-                .padding(16)
+                .padding(
+                    16 * densityScale
+                )
                 .background(
                     Color(
                         uiColor:
@@ -211,7 +213,9 @@ struct DataWorkspaceView: View {
                         )
                 )
             }
-            .padding(20)
+            .padding(
+                20 * densityScale
+            )
         }
         .background(
             Color(
