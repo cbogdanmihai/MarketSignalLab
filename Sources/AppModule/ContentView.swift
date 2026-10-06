@@ -379,18 +379,75 @@ struct ContentView: View {
 
                 Spacer()
 
-                let bars =
+                let stats =
                     store.storageOverview[
                         asset.symbol
-                    ]?.count ?? 0
+                    ] ?? .empty
 
-                if bars > 0 {
+                if let latest =
+                    stats.latestClose {
+
+                    VStack(
+                        alignment: .trailing,
+                        spacing: 1
+                    ) {
+                        Text(
+                            latest,
+                            format:
+                                .number.precision(
+                                    .fractionLength(2)
+                                )
+                        )
+                        .font(
+                            .caption
+                                .weight(.semibold)
+                                .monospacedDigit()
+                        )
+
+                        if let change =
+                            stats.latestChangePct {
+
+                            Text(
+                                change,
+                                format:
+                                    .percent.precision(
+                                        .fractionLength(2)
+                                    )
+                            )
+                            .font(
+                                .caption2
+                                    .monospacedDigit()
+                            )
+                            .foregroundStyle(
+                                change >= 0
+                                ? Color.green
+                                : Color.red
+                            )
+
+                        } else {
+                            Text(
+                                stats.count.formatted(
+                                    .number.notation(
+                                        .compactName
+                                    )
+                                )
+                                + " bars"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(
+                                .secondary
+                            )
+                        }
+                    }
+
+                } else if stats.count > 0 {
                     Text(
-                        bars.formatted(
+                        stats.count.formatted(
                             .number.notation(
                                 .compactName
                             )
                         )
+                        + " bars"
                     )
                     .font(
                         .caption2
