@@ -170,7 +170,7 @@ enum ResearchDatasetBuilder {
             rawBarCount: ordered.count,
             eligibleBarCount: eligibleBarCount,
             rowCount: rowCount,
-            featureCount: 14,
+            featureCount: 16,
             sessionCount: sessions.count,
             earliestRow: rows.first?.timestamp,
             latestRow: rows.last?.timestamp,
