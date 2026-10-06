@@ -1,5 +1,19 @@
 import SwiftUI
 
+private enum BulkHistoryScope:
+    String,
+    CaseIterable,
+    Identifiable {
+
+    case tradeable = "Tradeable"
+    case context = "Context"
+    case all = "All"
+
+    var id: String {
+        rawValue
+    }
+}
+
 struct HistoricalDataView: View {
     @Environment(\.dismiss)
     private var dismiss
@@ -18,10 +32,49 @@ struct HistoricalDataView: View {
     @State
     private var endDate = Date()
 
+    @State
+    private var bulkScope:
+        BulkHistoryScope = .tradeable
+
+    @State
+    private var skipFullyCovered = true
+
     private var estimatedChunks: Int {
         store.estimatedHistoricalChunks(
             startDate: startDate,
             endDate: endDate
+        )
+    }
+
+    private var bulkAssets:
+        [AssetConfig] {
+
+        switch bulkScope {
+        case .tradeable:
+            return store.tradeableAssets
+
+        case .context:
+            return store.contextAssets
+
+        case .all:
+            return store.assets
+        }
+    }
+
+    private var estimatedBulkRequests: Int {
+        estimatedChunks
+        * bulkAssets.count
+    }
+
+    private var estimatedBulkMinutes: Int {
+        Int(
+            ceil(
+                Double(
+                    estimatedBulkRequests
+                )
+                * 8.2
+                / 60
+            )
         )
     }
 
@@ -31,13 +84,19 @@ struct HistoricalDataView: View {
                 Section("Selected asset") {
                     LabeledContent(
                         "Symbol",
-                        value: store.selectedAsset?.symbol
+                        value:
+                            store
+                                .selectedAsset?
+                                .symbol
                             ?? "None"
                     )
 
                     LabeledContent(
                         "Provider symbol",
-                        value: store.selectedAsset?.providerSymbol
+                        value:
+                            store
+                                .selectedAsset?
+                                .providerSymbol
                             ?? "None"
                     )
 
@@ -48,7 +107,10 @@ struct HistoricalDataView: View {
 
                     LabeledContent(
                         "Timezone",
-                        value: store.selectedAsset?.timezone
+                        value:
+                            store
+                                .selectedAsset?
+                                .timezone
                             ?? "Unknown"
                     )
                 }
@@ -73,60 +135,70 @@ struct HistoricalDataView: View {
                     )
 
                     LabeledContent(
-                        "Estimated API requests",
-                        value: String(
-                            estimatedChunks
-                        )
+                        "Requests / symbol",
+                        value:
+                            String(
+                                estimatedChunks
+                            )
                     )
 
                     Text(
-                        "The default research range is 60 calendar days. Phase 2A uses 3-day chunks for 1-minute data, keeping each response below Twelve Data's 5,000-point limit even for 24/7 crypto. One import is capped at 90 days."
+                        "1-minute history is downloaded in 3-day chunks. One run is capped at 90 calendar days."
                     )
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(
+                        .secondary
+                    )
                 }
 
-                Section("Local storage") {
+                Section("Selected symbol") {
                     LabeledContent(
                         "Bars",
-                        value: String(
-                            store.storageStats.count
-                        )
+                        value:
+                            String(
+                                store
+                                    .storageStats
+                                    .count
+                            )
                     )
 
                     LabeledContent(
                         "Earliest",
-                        value: formatted(
-                            store.storageStats.earliest
-                        )
+                        value:
+                            formatted(
+                                store
+                                    .storageStats
+                                    .earliest
+                            )
                     )
 
                     LabeledContent(
                         "Latest",
-                        value: formatted(
-                            store.storageStats.latest
-                        )
-                    )
-
-                    Text(
-                        "Bars are deduplicated and stored in monthly partitions under Application Support."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Section("Download") {
-                    if store.isDownloadingHistory {
-                        ProgressView(
-                            value: Double(
-                                store.historyCompletedChunks
-                            ),
-                            total: Double(
-                                max(
-                                    store.historyTotalChunks,
-                                    1
-                                )
+                        value:
+                            formatted(
+                                store
+                                    .storageStats
+                                    .latest
                             )
+                    )
+
+                    if store.isDownloadingHistory,
+                       !store.isDownloadingAllHistory {
+
+                        ProgressView(
+                            value:
+                                Double(
+                                    store
+                                        .historyCompletedChunks
+                                ),
+                            total:
+                                Double(
+                                    max(
+                                        store
+                                            .historyTotalChunks,
+                                        1
+                                    )
+                                )
                         )
 
                         LabeledContent(
@@ -137,51 +209,221 @@ struct HistoricalDataView: View {
 
                         LabeledContent(
                             "Bars received",
-                            value: String(
-                                store.historyBarsSaved
-                            )
+                            value:
+                                String(
+                                    store
+                                        .historyBarsSaved
+                                )
                         )
                     }
 
-                    Text(store.historyMessage)
-                        .font(.callout)
-                        .textSelection(.enabled)
+                    Text(
+                        store.historyMessage
+                    )
+                    .font(.callout)
+                    .textSelection(
+                        .enabled
+                    )
 
                     Button {
                         Task {
-                            await store.downloadHistoricalData(
-                                startDate: startDate,
-                                endDate: endDate
-                            )
+                            await store
+                                .downloadHistoricalData(
+                                    startDate:
+                                        startDate,
+                                    endDate:
+                                        endDate
+                                )
                         }
                     } label: {
                         Label(
                             store.isDownloadingHistory
-                                ? "Downloading…"
-                                : "Download Historical Data",
+                            ? "Downloading…"
+                            : "Download Selected",
                             systemImage:
                                 "arrow.down.circle"
                         )
                     }
                     .disabled(
                         store.isDownloadingHistory
-                        || store.isValidatingUniverse
+                        || store
+                            .isValidatingUniverse
                         || store.status.isLoading
+                        || estimatedChunks == 0
+                    )
+                }
+
+                Section("Bulk history") {
+                    Picker(
+                        "Universe",
+                        selection: $bulkScope
+                    ) {
+                        ForEach(
+                            BulkHistoryScope
+                                .allCases
+                        ) { scope in
+                            Text(scope.rawValue)
+                                .tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Toggle(
+                        "Skip fully covered symbols",
+                        isOn:
+                            $skipFullyCovered
+                    )
+
+                    LabeledContent(
+                        "Assets",
+                        value:
+                            String(
+                                bulkAssets.count
+                            )
+                    )
+
+                    LabeledContent(
+                        "Maximum requests",
+                        value:
+                            String(
+                                estimatedBulkRequests
+                            )
+                    )
+
+                    LabeledContent(
+                        "Approx. provider time",
+                        value:
+                            estimatedBulkRequests
+                                == 0
+                            ? "—"
+                            : "~\(estimatedBulkMinutes) min"
+                    )
+
+                    Text(
+                        "Bulk mode runs sequentially and uses the shared provider rate limiter. Keep Swift Playgrounds open while it is running. Existing locked label policies are preserved, but research/calibration caches are invalidated for symbols that receive new history."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                    if store
+                        .isDownloadingAllHistory {
+
+                        ProgressView(
+                            value:
+                                Double(
+                                    store
+                                        .historyBatchCompletedAssets
+                                ),
+                            total:
+                                Double(
+                                    max(
+                                        store
+                                            .historyBatchTotalAssets,
+                                        1
+                                    )
+                                )
+                        )
+
+                        LabeledContent(
+                            "Current",
+                            value:
+                                store
+                                    .historyBatchCurrentSymbol
+                            ?? "Finishing…"
+                        )
+
+                        LabeledContent(
+                            "Assets",
+                            value:
+                                "\(store.historyBatchCompletedAssets) / \(store.historyBatchTotalAssets)"
+                        )
+
+                        LabeledContent(
+                            "Chunks",
+                            value:
+                                "\(store.historyCompletedChunks) / \(store.historyTotalChunks)"
+                        )
+
+                        LabeledContent(
+                            "Bars received",
+                            value:
+                                String(
+                                    store
+                                        .historyBarsSaved
+                                )
+                        )
+
+                        LabeledContent(
+                            "Skipped",
+                            value:
+                                String(
+                                    store
+                                        .historyBatchSkippedAssets
+                                )
+                        )
+                    }
+
+                    Text(
+                        store
+                            .historyBatchMessage
+                    )
+                    .font(.callout)
+                    .textSelection(
+                        .enabled
+                    )
+
+                    Button {
+                        Task {
+                            await store
+                                .downloadHistoricalDataForAll(
+                                    assets:
+                                        bulkAssets,
+                                    startDate:
+                                        startDate,
+                                    endDate:
+                                        endDate,
+                                    skipFullyCovered:
+                                        skipFullyCovered
+                                )
+                        }
+                    } label: {
+                        Label(
+                            store
+                                .isDownloadingAllHistory
+                            ? "Downloading All…"
+                            : "Download All",
+                            systemImage:
+                                "square.and.arrow.down.on.square"
+                        )
+                    }
+                    .buttonStyle(
+                        .borderedProminent
+                    )
+                    .disabled(
+                        store.isDownloadingHistory
+                        || bulkAssets.isEmpty
                         || estimatedChunks == 0
                     )
                 }
 
                 Section("Research pipeline") {
                     Text(
-                        "This is the ingestion layer for Phase 2. The next step uses the stored canonical bars to build features, labels and walk-forward datasets locally on the iPad."
+                        "History feeds the causal feature, locked-label, walk-forward and baseline-model pipeline. Data downloads never unlock or silently change an accepted label policy."
                     )
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(
+                        .secondary
+                    )
                 }
             }
-            .navigationTitle("Historical Data")
+            .navigationTitle(
+                "Historical Data"
+            )
             .toolbar {
                 ToolbarItem(
-                    placement: .cancellationAction
+                    placement:
+                        .cancellationAction
                 ) {
                     Button("Close") {
                         dismiss()
@@ -201,9 +443,15 @@ struct HistoricalDataView: View {
             return "None"
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.timeZone = .current
+        let formatter =
+            DateFormatter()
+
+        formatter.locale =
+            Locale.current
+
+        formatter.timeZone =
+            .current
+
         formatter.dateFormat =
             "yyyy-MM-dd HH:mm:ss"
 
