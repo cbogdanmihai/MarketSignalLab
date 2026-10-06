@@ -312,6 +312,236 @@ struct ResearchDatasetView: View {
                     }
                 }
 
+                Section("Label calibration") {
+                    Text(
+                        "Calibration uses only the earliest train + validation window. Every walk-forward test session stays reserved and is not used to rank label policies."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    if store.isCalibratingLabels {
+                        ProgressView()
+                    }
+
+                    Text(
+                        store.labelCalibrationMessage
+                    )
+                    .font(.callout)
+                    .textSelection(.enabled)
+
+                    Button {
+                        Task {
+                            await store.calibrateLabelPolicies()
+                        }
+                    } label: {
+                        Label(
+                            "Calibrate Label Policies",
+                            systemImage: "slider.horizontal.3"
+                        )
+                    }
+                    .disabled(
+                        store.isCalibratingLabels
+                        || store.isBuildingResearchDataset
+                        || store.isDownloadingHistory
+                        || store.isValidatingUniverse
+                    )
+
+                    if let calibration =
+                        store.labelCalibration {
+
+                        LabeledContent(
+                            "Calibration sessions",
+                            value: String(
+                                calibration.calibrationSessionCount
+                            )
+                        )
+
+                        LabeledContent(
+                            "Reserved test sessions",
+                            value: String(
+                                calibration.reservedTestSessionCount
+                            )
+                        )
+
+                        LabeledContent(
+                            "Target acceptance band",
+                            value:
+                                "\(percent(calibration.targetBandLow))–\(percent(calibration.targetBandHigh))"
+                        )
+
+                        LabeledContent(
+                            "Max ambiguity",
+                            value: percent(
+                                calibration.maxAmbiguousRate
+                            )
+                        )
+
+                        if let recommended =
+                            calibration.recommended {
+
+                            VStack(
+                                alignment: .leading,
+                                spacing: 8
+                            ) {
+                                Text("Recommended")
+                                    .font(.headline)
+
+                                Text(
+                                    recommended.policy.name
+                                )
+                                .font(.title3.bold())
+
+                                LabeledContent(
+                                    "Score",
+                                    value: score(
+                                        recommended.score
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "LONG target",
+                                    value: percent(
+                                        recommended.longTargetRate
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "SHORT target",
+                                    value: percent(
+                                        recommended.shortTargetRate
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "LONG timeout",
+                                    value: percent(
+                                        recommended.longTimeoutRate
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "SHORT timeout",
+                                    value: percent(
+                                        recommended.shortTimeoutRate
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "Ambiguous",
+                                    value: percent(
+                                        recommended.ambiguousRate
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "LONG payoff proxy",
+                                    value: percent(
+                                        recommended.longPayoffProxy
+                                    )
+                                )
+
+                                LabeledContent(
+                                    "SHORT payoff proxy",
+                                    value: percent(
+                                        recommended.shortPayoffProxy
+                                    )
+                                )
+
+                                Text(
+                                    recommended.meetsAcceptanceBand
+                                    ? "ACCEPTED: both target classes are inside the calibration band and ambiguity is within limit."
+                                    : "NOT YET ACCEPTED: this is the best candidate in the current grid, but at least one acceptance condition is still missed."
+                                )
+                                .font(.caption.bold())
+                                .foregroundStyle(
+                                    recommended.meetsAcceptanceBand
+                                    ? .green
+                                    : .orange
+                                )
+                            }
+                            .padding(
+                                .vertical,
+                                4
+                            )
+                        }
+
+                        DisclosureGroup(
+                            "Candidate ranking (\(calibration.candidates.count))"
+                        ) {
+                            ForEach(
+                                calibration.candidates
+                            ) { candidate in
+                                VStack(
+                                    alignment: .leading,
+                                    spacing: 6
+                                ) {
+                                    HStack {
+                                        Text(
+                                            candidate.policy.name
+                                        )
+                                        .font(.headline)
+
+                                        Spacer()
+
+                                        Text(
+                                            score(
+                                                candidate.score
+                                            )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    LabeledContent(
+                                        "Targets L / S",
+                                        value:
+                                            "\(percent(candidate.longTargetRate)) / \(percent(candidate.shortTargetRate))"
+                                    )
+
+                                    LabeledContent(
+                                        "Timeouts L / S",
+                                        value:
+                                            "\(percent(candidate.longTimeoutRate)) / \(percent(candidate.shortTimeoutRate))"
+                                    )
+
+                                    LabeledContent(
+                                        "Session std L / S",
+                                        value:
+                                            "\(percent(candidate.longTargetRateStd)) / \(percent(candidate.shortTargetRateStd))"
+                                    )
+
+                                    LabeledContent(
+                                        "Payoff proxy L / S",
+                                        value:
+                                            "\(percent(candidate.longPayoffProxy)) / \(percent(candidate.shortPayoffProxy))"
+                                    )
+
+                                    Text(
+                                        candidate.meetsAcceptanceBand
+                                        ? "accepted"
+                                        : "outside acceptance band"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        candidate.meetsAcceptanceBand
+                                        ? .green
+                                        : .secondary
+                                    )
+                                }
+                                .padding(
+                                    .vertical,
+                                    6
+                                )
+                            }
+                        }
+
+                        Text(
+                            "Payoff proxy is a label-quality diagnostic, not a trading backtest: target exits use +target, stop exits use -stop, and timeout exits use the horizon return."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Current feature set") {
                     Text(
                         "Time/session position, returns 1/5/15/30/60m, candle range, ATR(14), realized volatility(20), volume z-score(20), distance to SMA20/SMA50, distance to session high/low, and distance to causal session VWAP."
@@ -365,6 +595,15 @@ struct ResearchDatasetView: View {
 
         return formatter.string(
             from: date
+        )
+    }
+
+    private func score(
+        _ value: Double
+    ) -> String {
+        String(
+            format: "%.1f",
+            value
         )
     }
 
