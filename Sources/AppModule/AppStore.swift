@@ -54,6 +54,16 @@ final class AppStore: ObservableObject {
     @Published private(set)
     var researchMessage = "Research dataset not built yet."
 
+    @Published private(set)
+    var labelCalibration: LabelCalibrationResult?
+
+    @Published private(set)
+    var isCalibratingLabels = false
+
+    @Published private(set)
+    var labelCalibrationMessage =
+        "Label policies not calibrated yet."
+
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
@@ -255,6 +265,10 @@ final class AppStore: ObservableObject {
             researchSummary = nil
             researchMessage =
                 "Research dataset not built yet."
+
+            labelCalibration = nil
+            labelCalibrationMessage =
+                "Label policies not calibrated yet."
         }
 
         do {
@@ -581,6 +595,10 @@ final class AppStore: ObservableObject {
         }
 
         isBuildingResearchDataset = true
+        labelCalibration = nil
+        labelCalibrationMessage =
+            "Label policies not calibrated yet."
+
         researchMessage =
             "Building features, labels and purged walk-forward folds for \(asset.symbol)…"
 
@@ -649,6 +667,145 @@ final class AppStore: ObservableObject {
                 researchMessage
             )
         }
+    }
+
+    func calibrateLabelPolicies() async {
+        guard let asset = selectedAsset else {
+            return
+        }
+
+        guard !isCalibratingLabels else {
+            return
+        }
+
+        isCalibratingLabels = true
+        labelCalibrationMessage =
+            "Calibrating fixed and ATR-adaptive label policies for \(asset.symbol)…"
+
+        defer {
+            isCalibratingLabels = false
+        }
+
+        do {
+            let localBars = try await repository.load(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
+            bars = localBars
+
+            storageStats = try await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
+            guard localBars.count >= 300 else {
+                labelCalibration = nil
+                labelCalibrationMessage =
+                    "Need more historical 1-minute bars before label calibration."
+
+                log(
+                    "warning",
+                    labelCalibrationMessage
+                )
+
+                return
+            }
+
+            if researchSummary?.symbol != asset.symbol
+                || researchFolds.isEmpty {
+
+                let baseline = await Task.detached(
+                    priority: .userInitiated
+                ) {
+                    ResearchDatasetBuilder.build(
+                        asset: asset,
+                        bars: localBars
+                    )
+                }.value
+
+                researchRows = baseline.rows
+                researchFolds = baseline.folds
+                researchSummary = baseline.summary
+            }
+
+            guard !researchFolds.isEmpty else {
+                labelCalibration = nil
+                labelCalibrationMessage =
+                    "Label calibration requires session-safe walk-forward folds. Download more history first."
+
+                log(
+                    "warning",
+                    labelCalibrationMessage
+                )
+
+                return
+            }
+
+            let folds = researchFolds
+
+            let result = await Task.detached(
+                priority: .userInitiated
+            ) {
+                LabelCalibrationEngine.calibrate(
+                    asset: asset,
+                    bars: localBars,
+                    folds: folds
+                )
+            }.value
+
+            guard let result,
+                  let recommended =
+                    result.recommended
+            else {
+                labelCalibration = nil
+                labelCalibrationMessage =
+                    "Label calibration produced no usable candidates."
+
+                log(
+                    "warning",
+                    labelCalibrationMessage
+                )
+
+                return
+            }
+
+            labelCalibration = result
+
+            let acceptanceText =
+                recommended.meetsAcceptanceBand
+                ? "accepted"
+                : "best available, but outside the acceptance band"
+
+            labelCalibrationMessage =
+                "Recommended \(recommended.policy.name): LONG \(percentText(recommended.longTargetRate)), SHORT \(percentText(recommended.shortTargetRate)), score \(String(format: "%.1f", recommended.score)) — \(acceptanceText)."
+
+            log(
+                recommended.meetsAcceptanceBand
+                    ? "info"
+                    : "warning",
+                labelCalibrationMessage
+            )
+
+        } catch {
+            labelCalibration = nil
+            labelCalibrationMessage =
+                "Label calibration failed: \(error.localizedDescription)"
+
+            log(
+                "error",
+                labelCalibrationMessage
+            )
+        }
+    }
+
+    private func percentText(
+        _ value: Double
+    ) -> String {
+        String(
+            format: "%.2f%%",
+            value * 100
+        )
     }
 
     func prepareDiagnostics() {
