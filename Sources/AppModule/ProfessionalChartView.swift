@@ -76,6 +76,9 @@ struct ProfessionalChartView: View {
     let asset: AssetConfig
     let bars: [MarketBar]
 
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     @State
     private var chartStyle: ProfessionalChartStyle = .candles
 
@@ -259,7 +262,9 @@ struct ProfessionalChartView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 180)
+                .frame(
+                    width: 180 * densityScale
+                )
 
                 Spacer()
 
@@ -592,7 +597,8 @@ struct ProfessionalChartView: View {
             }
         }
         .frame(
-            minHeight: 420
+            minHeight:
+                420 * densityScale
         )
     }
 
@@ -624,7 +630,10 @@ struct ProfessionalChartView: View {
                 AxisValueLabel()
             }
         }
-        .frame(height: 90)
+        .frame(
+            height:
+                90 * densityScale
+        )
     }
 
     private func liveBarStrip(
@@ -713,15 +722,15 @@ struct ProfessionalChartView: View {
     private var candleWidth: CGFloat {
         switch interval {
         case .oneMinute:
-            return 2.0
+            return 2.0 * densityScale
         case .fiveMinutes:
-            return 3.0
+            return 3.0 * densityScale
         case .fifteenMinutes:
-            return 4.0
+            return 4.0 * densityScale
         case .thirtyMinutes:
-            return 5.0
+            return 5.0 * densityScale
         case .oneHour:
-            return 6.0
+            return 6.0 * densityScale
         }
     }
 
