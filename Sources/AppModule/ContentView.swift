@@ -178,33 +178,6 @@ private struct AssetRow: View {
         store.validationState(for: asset)
     }
 
-    private var chartBars: [MarketBar] {
-        Array(store.bars.suffix(120))
-    }
-
-    private var chartYDomain: ClosedRange<Double> {
-        guard !chartBars.isEmpty else {
-            return 0...1
-        }
-
-        let low = chartBars.map(\.low).min()
-            ?? chartBars.map(\.close).min()
-            ?? 0
-
-        let high = chartBars.map(\.high).max()
-            ?? chartBars.map(\.close).max()
-            ?? 1
-
-        let rawRange = max(
-            high - low,
-            max(abs(high) * 0.001, 0.01)
-        )
-
-        let padding = rawRange * 0.12
-
-        return (low - padding)...(high + padding)
-    }
-
     var body: some View {
         HStack(spacing: 10) {
             statusIcon
@@ -273,6 +246,33 @@ private struct AssetDashboard: View {
 
     private var validation: AssetValidationState {
         store.validationState(for: asset)
+    }
+
+    private var chartBars: [MarketBar] {
+        Array(store.bars.suffix(120))
+    }
+
+    private var chartYDomain: ClosedRange<Double> {
+        guard !chartBars.isEmpty else {
+            return 0...1
+        }
+
+        let low = chartBars.map(\.low).min()
+            ?? chartBars.map(\.close).min()
+            ?? 0
+
+        let high = chartBars.map(\.high).max()
+            ?? chartBars.map(\.close).max()
+            ?? 1
+
+        let rawRange = max(
+            high - low,
+            max(abs(high) * 0.001, 0.01)
+        )
+
+        let padding = rawRange * 0.12
+
+        return (low - padding)...(high + padding)
     }
 
     var body: some View {
