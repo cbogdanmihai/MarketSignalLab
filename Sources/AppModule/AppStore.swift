@@ -82,6 +82,19 @@ final class AppStore: ObservableObject {
     @Published private(set)
     var customAssetMessage = ""
 
+    @Published private(set)
+    var isBuildingAllResearch = false
+
+    @Published private(set)
+    var allResearchProgress = 0
+
+    @Published private(set)
+    var allResearchTotal = 0
+
+    @Published private(set)
+    var allResearchMessage =
+        "Cross-symbol research overview ready."
+
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
@@ -1085,6 +1098,77 @@ final class AppStore: ObservableObject {
         String(
             format: "%.2f%%",
             value * 100
+        )
+    }
+
+    func buildAllLocalResearchDatasets() async {
+        guard !isBuildingAllResearch else {
+            return
+        }
+
+        isBuildingAllResearch = true
+        allResearchProgress = 0
+
+        defer {
+            isBuildingAllResearch = false
+        }
+
+        await refreshStorageOverview()
+
+        let candidates = assets.filter {
+            (storageOverview[$0.symbol]?.count ?? 0)
+                >= 300
+        }
+
+        allResearchTotal = candidates.count
+
+        guard !candidates.isEmpty else {
+            allResearchMessage =
+                "No symbols have at least 300 local 1-minute bars yet."
+            return
+        }
+
+        allResearchMessage =
+            "Building research summaries for \(candidates.count) symbols…"
+
+        for asset in candidates {
+            do {
+                let localBars = try await repository.load(
+                    symbol: asset.symbol,
+                    timeframe: "1min"
+                )
+
+                let result = await Task.detached(
+                    priority: .userInitiated
+                ) {
+                    ResearchDatasetBuilder.build(
+                        asset: asset,
+                        bars: localBars
+                    )
+                }.value
+
+                researchSummaryBySymbol[asset.symbol] =
+                    result.summary
+
+                researchFoldsBySymbol[asset.symbol] =
+                    result.folds
+
+            } catch {
+                log(
+                    "warning",
+                    "Cross-symbol research failed for \(asset.symbol): \(error.localizedDescription)"
+                )
+            }
+
+            allResearchProgress += 1
+        }
+
+        allResearchMessage =
+            "Cross-symbol research complete: \(researchSummaryBySymbol.count) summaries cached."
+
+        log(
+            "info",
+            allResearchMessage
         )
     }
 
