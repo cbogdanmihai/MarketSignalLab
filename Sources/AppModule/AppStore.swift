@@ -41,6 +41,25 @@ final class AppStore: ObservableObject {
     var historyMessage = "Historical downloader ready."
 
     @Published private(set)
+    var isDownloadingAllHistory = false
+
+    @Published private(set)
+    var historyBatchCurrentSymbol: String?
+
+    @Published private(set)
+    var historyBatchCompletedAssets = 0
+
+    @Published private(set)
+    var historyBatchTotalAssets = 0
+
+    @Published private(set)
+    var historyBatchSkippedAssets = 0
+
+    @Published private(set)
+    var historyBatchMessage =
+        "Bulk historical downloader ready."
+
+    @Published private(set)
     var researchRows: [ResearchRow] = []
 
     @Published private(set)
@@ -906,6 +925,321 @@ final class AppStore: ObservableObject {
                 "error",
                 historyMessage
             )
+        }
+    }
+
+    func downloadHistoricalDataForAll(
+        assets requestedAssets: [AssetConfig],
+        startDate: Date,
+        endDate: Date,
+        skipFullyCovered: Bool
+    ) async {
+        guard !isDownloadingHistory,
+              !isDownloadingAllHistory
+        else {
+            return
+        }
+
+        let key =
+            apiKey.trimmingCharacters(
+                in:
+                    .whitespacesAndNewlines
+            )
+
+        guard !key.isEmpty else {
+            historyBatchMessage =
+                "Add your Twelve Data API key first."
+            return
+        }
+
+        guard endDate > startDate else {
+            historyBatchMessage =
+                "End date must be later than start date."
+            return
+        }
+
+        let maximumRange: TimeInterval =
+            90 * 24 * 60 * 60
+
+        guard endDate
+                .timeIntervalSince(
+                    startDate
+                )
+                <= maximumRange
+        else {
+            historyBatchMessage =
+                "One bulk 1-minute import is capped at 90 days."
+            return
+        }
+
+        let assets =
+            requestedAssets
+                .sorted {
+                    $0.symbol
+                        < $1.symbol
+                }
+
+        guard !assets.isEmpty else {
+            historyBatchMessage =
+                "No assets selected for bulk download."
+            return
+        }
+
+        let chunks =
+            historicalChunks(
+                startDate: startDate,
+                endDate: endDate
+            )
+
+        isDownloadingAllHistory = true
+        isDownloadingHistory = true
+
+        historyBatchCurrentSymbol = nil
+        historyBatchCompletedAssets = 0
+        historyBatchTotalAssets =
+            assets.count
+        historyBatchSkippedAssets = 0
+
+        historyCompletedChunks = 0
+        historyTotalChunks =
+            chunks.count
+            * assets.count
+        historyBarsSaved = 0
+
+        defer {
+            isDownloadingAllHistory =
+                false
+            isDownloadingHistory =
+                false
+            historyBatchCurrentSymbol =
+                nil
+        }
+
+        let provider =
+            TwelveDataProvider(
+                apiKey: key
+            )
+
+        log(
+            "info",
+            "Bulk historical import started for \(assets.count) assets × \(chunks.count) chunks."
+        )
+
+        for asset in assets {
+            historyBatchCurrentSymbol =
+                asset.symbol
+
+            if skipFullyCovered {
+                let stats =
+                    (try? await repository
+                        .stats(
+                            symbol:
+                                asset.symbol,
+                            timeframe:
+                                "1min"
+                        ))
+                    ?? .empty
+
+                if let earliest =
+                        stats.earliest,
+                   let latest =
+                        stats.latest,
+                   earliest <= startDate,
+                   latest >= endDate {
+
+                    historyBatchSkippedAssets += 1
+                    historyBatchCompletedAssets += 1
+                    historyCompletedChunks +=
+                        chunks.count
+
+                    storageOverview[
+                        asset.symbol
+                    ] = stats
+
+                    log(
+                        "info",
+                        "Bulk history skipped \(asset.symbol): requested range already covered."
+                    )
+
+                    continue
+                }
+            }
+
+            invalidateResearchCaches(
+                for: asset
+            )
+
+            var assetReceived = 0
+            var failed = false
+
+            for (
+                chunkIndex,
+                chunk
+            ) in chunks.enumerated() {
+
+                historyBatchMessage =
+                    "Downloading \(asset.symbol) · chunk \(chunkIndex + 1)/\(chunks.count) · asset \(historyBatchCompletedAssets + 1)/\(assets.count)…"
+
+                do {
+                    let downloaded =
+                        try await provider
+                            .historicalBars(
+                                for: asset,
+                                interval:
+                                    "1min",
+                                startDate:
+                                    chunk.start,
+                                endDate:
+                                    chunk.end
+                            )
+
+                    try await repository
+                        .save(downloaded)
+
+                    assetReceived +=
+                        downloaded.count
+                    historyBarsSaved +=
+                        downloaded.count
+
+                } catch let error
+                    as MarketDataError {
+
+                    if case .noData = error {
+                        log(
+                            "info",
+                            "No bars in bulk chunk \(chunkIndex + 1) for \(asset.symbol); continuing."
+                        )
+
+                    } else {
+                        failed = true
+
+                        log(
+                            "error",
+                            "Bulk history failed on \(asset.symbol) chunk \(chunkIndex + 1): \(error.localizedDescription)"
+                        )
+
+                        break
+                    }
+
+                } catch {
+                    failed = true
+
+                    log(
+                        "error",
+                        "Bulk history failed on \(asset.symbol) chunk \(chunkIndex + 1): \(error.localizedDescription)"
+                    )
+
+                    break
+                }
+
+                historyCompletedChunks += 1
+            }
+
+            if failed {
+                // Count unattempted chunks so overall progress does not look
+                // permanently stuck on a failed symbol.
+                let completedForAsset =
+                    min(
+                        chunks.count,
+                        max(
+                            0,
+                            historyCompletedChunks
+                            - (
+                                historyBatchCompletedAssets
+                                * chunks.count
+                            )
+                        )
+                    )
+
+                historyCompletedChunks +=
+                    max(
+                        0,
+                        chunks.count
+                        - completedForAsset
+                    )
+            }
+
+            if let stats =
+                try? await repository.stats(
+                    symbol:
+                        asset.symbol,
+                    timeframe:
+                        "1min"
+                ) {
+
+                storageOverview[
+                    asset.symbol
+                ] = stats
+            }
+
+            historyBatchCompletedAssets += 1
+
+            log(
+                failed
+                ? "warning"
+                : "info",
+                "Bulk history \(asset.symbol): received \(assetReceived) bars."
+            )
+        }
+
+        if let selected =
+                selectedAsset,
+           assets.contains(
+                where: {
+                    $0.symbol
+                        == selected.symbol
+                }
+           ) {
+
+            await loadLocalBars()
+        }
+
+        historyBatchMessage =
+            "Bulk import complete: \(historyBatchCompletedAssets) assets processed, \(historyBatchSkippedAssets) skipped, \(historyBarsSaved) bars received."
+
+        status.message =
+            historyBatchMessage
+
+        status.lastRefresh =
+            Date()
+
+        log(
+            "info",
+            historyBatchMessage
+        )
+    }
+
+    private func invalidateResearchCaches(
+        for asset: AssetConfig
+    ) {
+        researchSummaryBySymbol
+            .removeValue(
+                forKey:
+                    asset.symbol
+            )
+
+        researchFoldsBySymbol
+            .removeValue(
+                forKey:
+                    asset.symbol
+            )
+
+        labelCalibrationBySymbol
+            .removeValue(
+                forKey:
+                    asset.symbol
+            )
+
+        if selectedAsset?.symbol
+            == asset.symbol {
+
+            researchRows = []
+            researchSummary = nil
+            researchFolds = []
+            labelCalibration = nil
+
+            labelCalibrationMessage =
+                "Historical data changed; calibration cache cleared. Any locked policy remains frozen until explicitly changed."
         }
     }
 
