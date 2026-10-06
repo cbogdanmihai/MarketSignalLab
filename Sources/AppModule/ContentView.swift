@@ -4,7 +4,6 @@ import Charts
 private enum RootSheet: String, Identifiable {
     case appInfo
     case historicalData
-    case researchDataset
 
     var id: String {
         rawValue
@@ -17,6 +16,9 @@ struct ContentView: View {
     @State
     private var activeSheet: RootSheet?
 
+    @State
+    private var showingResearchDatasetPage = false
+
     var body: some View {
         NavigationSplitView {
             List(
@@ -26,6 +28,7 @@ struct ContentView: View {
                     },
                     set: { newValue in
                         store.selectedAsset = newValue
+                        showingResearchDatasetPage = false
 
                         Task {
                             await store.loadLocalBars()
@@ -53,7 +56,7 @@ struct ContentView: View {
                     }
 
                     Button {
-                        activeSheet = .researchDataset
+                        showingResearchDatasetPage = true
                     } label: {
                         Label(
                             "Research Dataset",
@@ -154,8 +157,15 @@ struct ContentView: View {
             .navigationTitle("Universe")
 
         } detail: {
-            if let asset = store.selectedAsset {
+            if showingResearchDatasetPage {
+                ResearchDatasetView {
+                    showingResearchDatasetPage = false
+                }
+                .environmentObject(store)
+
+            } else if let asset = store.selectedAsset {
                 AssetDashboard(asset: asset)
+
             } else {
                 ContentUnavailableView(
                     "No asset selected",
@@ -176,10 +186,6 @@ struct ContentView: View {
 
             case .historicalData:
                 HistoricalDataView()
-                    .environmentObject(store)
-
-            case .researchDataset:
-                ResearchDatasetView()
                     .environmentObject(store)
             }
         }
