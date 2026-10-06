@@ -103,6 +103,7 @@ struct TwelveDataSymbolValidator: SymbolValidator {
         let unavailableWords = [
             "symbol not found",
             "invalid symbol",
+            "parameter is missing or invalid",
             "does not exist",
             "not supported",
             "no data"
