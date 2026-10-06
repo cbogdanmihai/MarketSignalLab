@@ -562,10 +562,14 @@ struct ProfessionalChartView: View {
                             minimumDistance: 0
                         )
                         .onChanged { value in
+                            guard let anchor =
+                                    proxy.plotFrame
+                            else {
+                                return
+                            }
+
                             let plotFrame =
-                                geometry[
-                                    proxy.plotFrame!
-                                ]
+                                geometry[anchor]
 
                             let x =
                                 value.location.x
