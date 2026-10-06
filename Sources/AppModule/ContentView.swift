@@ -55,6 +55,36 @@ struct ContentView: View {
         ) ?? .standard
     }
 
+    private var sidebarIdealWidth: CGFloat {
+        switch density {
+        case .ultraCompact:
+            return 185
+
+        case .compact:
+            return 205
+
+        case .dense:
+            return 225
+
+        case .standard:
+            return 255
+
+        case .large:
+            return 285
+        }
+    }
+
+    private var sidebarMinWidth: CGFloat {
+        max(
+            165,
+            sidebarIdealWidth - 25
+        )
+    }
+
+    private var sidebarMaxWidth: CGFloat {
+        sidebarIdealWidth + 30
+    }
+
     private var filteredTradeable:
         [AssetConfig] {
 
@@ -279,6 +309,24 @@ struct ContentView: View {
                 )
             }
         }
+        .environment(
+            \.defaultMinListRowHeight,
+            max(
+                24,
+                34 * density.layoutScale
+            )
+        )
+        .listSectionSpacing(
+            max(
+                5,
+                12 * density.layoutScale
+            )
+        )
+        .navigationSplitViewColumnWidth(
+            min: sidebarMinWidth,
+            ideal: sidebarIdealWidth,
+            max: sidebarMaxWidth
+        )
         .navigationTitle("MarketSignalLab")
         .searchable(
             text: $searchText,
@@ -328,7 +376,13 @@ struct ContentView: View {
                 await store.loadLocalBars()
             }
         } label: {
-            HStack(spacing: 9) {
+            HStack(
+                spacing:
+                    max(
+                        5,
+                        8 * density.layoutScale
+                    )
+            ) {
                 Circle()
                     .fill(
                         statusColor(
@@ -340,15 +394,32 @@ struct ContentView: View {
                         )
                     )
                     .frame(
-                        width: 7,
-                        height: 7
+                        width:
+                            max(
+                                5,
+                                7 * density.layoutScale
+                            ),
+                        height:
+                            max(
+                                5,
+                                7 * density.layoutScale
+                            )
                     )
 
                 VStack(
                     alignment: .leading,
-                    spacing: 1
+                    spacing:
+                        density == .ultraCompact
+                        ? 0
+                        : 1
                 ) {
-                    HStack(spacing: 5) {
+                    HStack(
+                        spacing:
+                            max(
+                                3,
+                                5 * density.layoutScale
+                            )
+                    ) {
                         Text(asset.symbol)
                             .font(
                                 .subheadline
@@ -485,6 +556,30 @@ struct ContentView: View {
             )
         }
         .buttonStyle(.plain)
+        .listRowInsets(
+            EdgeInsets(
+                top:
+                    max(
+                        2,
+                        5 * density.layoutScale
+                    ),
+                leading:
+                    max(
+                        8,
+                        12 * density.layoutScale
+                    ),
+                bottom:
+                    max(
+                        2,
+                        5 * density.layoutScale
+                    ),
+                trailing:
+                    max(
+                        8,
+                        12 * density.layoutScale
+                    )
+            )
+        )
         .listRowBackground(
             store.selectedAsset?.symbol
                 == asset.symbol
