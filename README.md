@@ -71,3 +71,32 @@ Planned baseline sequence:
 No live signal is allowed into the scanner until the baseline beats the no-skill reference out of sample.
 
 The project remains signal/research only. No broker execution is implemented.
+
+
+## Chart 3 — TradingView-style dynamic viewport
+
+The chart now uses candle index rather than wall-clock time for the horizontal axis. This removes large overnight/weekend gaps and makes pan/zoom behavior closer to professional charting terminals.
+
+Adaptive interval defaults:
+
+- 1m → 1D
+- 5m → 1D
+- 15m → 5D
+- 30m → 5D
+- 1h → 1M
+
+Changing timeframe automatically selects a useful default range and jumps to the latest data. Manual 1D / 5D / 1M / ALL remains available.
+
+Additional behavior:
+
+- horizontal drag scrolls through candles;
+- pinch gesture zooms candle density;
+- +/- magnifiers zoom around the visible center;
+- Fit resets the selected range;
+- Latest jumps back to the newest candle;
+- price and volume share the same scroll position;
+- the right price scale rescales to the visible candles;
+- the toolbar reports visible candles vs loaded candles;
+- full current local history is retained up to a 20,000 aggregated-bar safety cap.
+
+Crosshair remains an explicit inspection mode so it does not steal the normal scroll gesture.
