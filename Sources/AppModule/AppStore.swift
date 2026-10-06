@@ -64,6 +64,24 @@ final class AppStore: ObservableObject {
     var labelCalibrationMessage =
         "Label policies not calibrated yet."
 
+    @Published private(set)
+    var storageOverview: [String: BarStorageStats] = [:]
+
+    @Published private(set)
+    var researchSummaryBySymbol: [String: ResearchDatasetSummary] = [:]
+
+    @Published private(set)
+    var researchFoldsBySymbol: [String: [WalkForwardFold]] = [:]
+
+    @Published private(set)
+    var labelCalibrationBySymbol: [String: LabelCalibrationResult] = [:]
+
+    @Published private(set)
+    var isAddingCustomAsset = false
+
+    @Published private(set)
+    var customAssetMessage = ""
+
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
@@ -73,6 +91,9 @@ final class AppStore: ObservableObject {
 
     private let validationDefaultsKey =
         "MarketSignalLab.UniverseValidation.v2"
+
+    private let customAssetsDefaultsKey =
+        "MarketSignalLab.CustomAssets.v1"
 
     private var diagnosticEvents: [DiagnosticEvent] = []
 
@@ -84,13 +105,33 @@ final class AppStore: ObservableObject {
         loadValidationCache()
 
         do {
-            assets = try UniverseLoader.load()
+            let builtIn = try UniverseLoader.load()
+            let custom = loadCustomAssets()
+
+            var merged: [String: AssetConfig] = [:]
+
+            for asset in builtIn + custom {
+                merged[asset.symbol.uppercased()] = asset
+            }
+
+            assets = merged.values.sorted {
+                lhs, rhs in
+
+                if lhs.role != rhs.role {
+                    return lhs.role == .tradeable
+                }
+
+                return lhs.symbol < rhs.symbol
+            }
 
             selectedAsset =
                 assets.first(where: { $0.symbol == "QQQ" })
                 ?? assets.first
 
-            log("info", "Universe loaded with \(assets.count) assets.")
+            log(
+                "info",
+                "Universe loaded with \(assets.count) assets (\(custom.count) custom)."
+            )
 
         } catch {
             status.message =
@@ -106,6 +147,206 @@ final class AppStore: ObservableObject {
 
     var contextAssets: [AssetConfig] {
         assets.filter { $0.role == .context }
+    }
+
+    var customAssets: [AssetConfig] {
+        loadCustomAssets()
+    }
+
+    func isCustomAsset(
+        _ asset: AssetConfig
+    ) -> Bool {
+        Set(
+            loadCustomAssets().map {
+                $0.symbol.uppercased()
+            }
+        )
+        .contains(
+            asset.symbol.uppercased()
+        )
+    }
+
+    func addCustomAsset(
+        symbol rawSymbol: String,
+        displayName rawDisplayName: String,
+        assetClass: AssetClass
+    ) async {
+        let symbol = rawSymbol
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .uppercased()
+
+        guard !symbol.isEmpty else {
+            customAssetMessage =
+                "Enter a ticker or provider symbol."
+            return
+        }
+
+        guard assets.contains(
+            where: {
+                $0.symbol.uppercased() == symbol
+            }
+        ) == false else {
+            customAssetMessage =
+                "\(symbol) is already in the watchlist."
+            return
+        }
+
+        isAddingCustomAsset = true
+        customAssetMessage =
+            "Checking \(symbol) with Twelve Data…"
+
+        defer {
+            isAddingCustomAsset = false
+        }
+
+        let displayName = rawDisplayName
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+
+        let asset = AssetConfig(
+            symbol: symbol,
+            displayName:
+                displayName.isEmpty
+                ? symbol
+                : displayName,
+            assetClass: assetClass,
+            role: .tradeable,
+            timezone:
+                assetClass == .crypto
+                ? "UTC"
+                : "America/New_York",
+            modelGroup: "custom",
+            optionsEnabled:
+                assetClass == .equity
+                || assetClass == .etf,
+            dataSymbol: nil
+        )
+
+        let key = apiKey.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        var validation = AssetValidationState.unknown
+
+        if !key.isEmpty {
+            let validator = TwelveDataSymbolValidator(
+                apiKey: key
+            )
+
+            validation = await validator.validate(
+                asset: asset
+            )
+
+            if validation.availability == .unavailable
+                || validation.availability == .restricted {
+
+                customAssetMessage =
+                    "Could not add \(symbol): \(validation.message)"
+                return
+            }
+        }
+
+        var custom = loadCustomAssets()
+        custom.append(asset)
+        saveCustomAssets(custom)
+
+        assets.append(asset)
+        assets.sort {
+            lhs, rhs in
+
+            if lhs.role != rhs.role {
+                return lhs.role == .tradeable
+            }
+
+            return lhs.symbol < rhs.symbol
+        }
+
+        validations[symbol] = validation
+        saveValidationCache()
+
+        selectedAsset = asset
+
+        customAssetMessage =
+            "Added \(symbol) to the watchlist."
+
+        log(
+            "info",
+            customAssetMessage
+        )
+
+        await loadLocalBars()
+    }
+
+    func removeCustomAsset(
+        _ asset: AssetConfig
+    ) {
+        var custom = loadCustomAssets()
+
+        custom.removeAll {
+            $0.symbol.uppercased()
+                == asset.symbol.uppercased()
+        }
+
+        saveCustomAssets(custom)
+
+        assets.removeAll {
+            $0.symbol.uppercased()
+                == asset.symbol.uppercased()
+        }
+
+        validations.removeValue(
+            forKey: asset.symbol
+        )
+
+        storageOverview.removeValue(
+            forKey: asset.symbol
+        )
+
+        researchSummaryBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        researchFoldsBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        labelCalibrationBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        if selectedAsset?.symbol == asset.symbol {
+            selectedAsset =
+                assets.first(where: {
+                    $0.symbol == "QQQ"
+                })
+                ?? assets.first
+        }
+
+        customAssetMessage =
+            "Removed \(asset.symbol) from the watchlist."
+
+        log(
+            "info",
+            customAssetMessage
+        )
+    }
+
+    func refreshStorageOverview() async {
+        var result: [String: BarStorageStats] = [:]
+
+        for asset in assets {
+            if let stats = try? await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            ) {
+                result[asset.symbol] = stats
+            }
+        }
+
+        storageOverview = result
     }
 
     var availableCount: Int {
@@ -261,14 +502,25 @@ final class AppStore: ObservableObject {
 
         if researchSummary?.symbol != asset.symbol {
             researchRows = []
-            researchFolds = []
-            researchSummary = nil
-            researchMessage =
-                "Research dataset not built yet."
+            researchSummary =
+                researchSummaryBySymbol[asset.symbol]
 
-            labelCalibration = nil
+            researchFolds =
+                researchFoldsBySymbol[asset.symbol]
+                ?? []
+
+            labelCalibration =
+                labelCalibrationBySymbol[asset.symbol]
+
+            researchMessage =
+                researchSummary == nil
+                ? "Research dataset not built yet."
+                : "Loaded cached research summary for \(asset.symbol)."
+
             labelCalibrationMessage =
-                "Label policies not calibrated yet."
+                labelCalibration == nil
+                ? "Label policies not calibrated yet."
+                : "Loaded cached label calibration for \(asset.symbol)."
         }
 
         do {
@@ -281,6 +533,9 @@ final class AppStore: ObservableObject {
                 symbol: asset.symbol,
                 timeframe: "1min"
             )
+
+            storageOverview[asset.symbol] =
+                storageStats
 
             if bars.isEmpty {
                 status.message =
@@ -451,6 +706,18 @@ final class AppStore: ObservableObject {
         labelCalibration = nil
         labelCalibrationMessage =
             "Historical data changed; recalibrate label policies after rebuilding the research dataset."
+
+        researchSummaryBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        researchFoldsBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        labelCalibrationBySymbol.removeValue(
+            forKey: asset.symbol
+        )
 
         historyCompletedChunks = 0
         historyBarsSaved = 0
@@ -652,6 +919,12 @@ final class AppStore: ObservableObject {
             researchFolds = result.folds
             researchSummary = result.summary
 
+            researchSummaryBySymbol[asset.symbol] =
+                result.summary
+
+            researchFoldsBySymbol[asset.symbol] =
+                result.folds
+
             researchMessage =
                 "Research dataset ready: \(result.summary.rowCount) labeled rows, \(result.summary.featureCount) features, \(result.folds.count) purged walk-forward folds."
 
@@ -776,6 +1049,8 @@ final class AppStore: ObservableObject {
             }
 
             labelCalibration = result
+            labelCalibrationBySymbol[asset.symbol] =
+                result
 
             let acceptanceText =
                 recommended.meetsAcceptanceBand
@@ -929,6 +1204,38 @@ final class AppStore: ObservableObject {
                 diagnosticEvents.count - 200
             )
         }
+    }
+
+    private func loadCustomAssets() -> [AssetConfig] {
+        guard
+            let data = UserDefaults.standard.data(
+                forKey: customAssetsDefaultsKey
+            )
+        else {
+            return []
+        }
+
+        return (
+            try? JSONDecoder().decode(
+                [AssetConfig].self,
+                from: data
+            )
+        ) ?? []
+    }
+
+    private func saveCustomAssets(
+        _ custom: [AssetConfig]
+    ) {
+        guard let data = try? JSONEncoder().encode(
+            custom
+        ) else {
+            return
+        }
+
+        UserDefaults.standard.set(
+            data,
+            forKey: customAssetsDefaultsKey
+        )
     }
 
     private func saveValidationCache() {
