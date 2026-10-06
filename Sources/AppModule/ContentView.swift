@@ -178,6 +178,33 @@ private struct AssetRow: View {
         store.validationState(for: asset)
     }
 
+    private var chartBars: [MarketBar] {
+        Array(store.bars.suffix(120))
+    }
+
+    private var chartYDomain: ClosedRange<Double> {
+        guard !chartBars.isEmpty else {
+            return 0...1
+        }
+
+        let low = chartBars.map(\.low).min()
+            ?? chartBars.map(\.close).min()
+            ?? 0
+
+        let high = chartBars.map(\.high).max()
+            ?? chartBars.map(\.close).max()
+            ?? 1
+
+        let rawRange = max(
+            high - low,
+            max(abs(high) * 0.001, 0.01)
+        )
+
+        let padding = rawRange * 0.12
+
+        return (low - padding)...(high + padding)
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             statusIcon
@@ -306,7 +333,7 @@ private struct AssetDashboard: View {
                     .buttonStyle(.bordered)
                 }
 
-                GroupBox("Phase 1 status") {
+                GroupBox("Asset status") {
                     VStack(
                         alignment: .leading,
                         spacing: 8
@@ -355,9 +382,7 @@ private struct AssetDashboard: View {
                 }
 
                 if store.bars.count >= 2 {
-                    Chart(
-                        Array(store.bars.suffix(120))
-                    ) { bar in
+                    Chart(chartBars) { bar in
                         LineMark(
                             x: .value(
                                 "Time",
@@ -369,6 +394,9 @@ private struct AssetDashboard: View {
                             )
                         )
                     }
+                    .chartYScale(
+                        domain: chartYDomain
+                    )
                     .frame(height: 300)
 
                 } else {
