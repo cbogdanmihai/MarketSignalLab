@@ -1,17 +1,44 @@
-# MarketSignalLab 0.1.5 — Provider compatibility fixes
+# MarketSignalLab 0.2.0 — Phase 2A Historical Ingestion
 
 Native iPad Swift Playgrounds research app for market-data ingestion and signal research.
 
-## Phase 1.5 additions
+## Phase 1 complete
 
-- Keeps the global Twelve Data rate limiter from v0.1.3.
-- Adds the App Info runtime/version page from v0.1.4.
-- Fixes crypto `/time_series` decoding by allowing crypto metadata to omit `symbol` and `exchange_timezone`.
-- Falls back to the configured asset timezone; `BTC/USD` therefore uses UTC.
-- Replaces the unavailable direct `VIX` index entry with `VIXY`, a US-listed VIX short-term futures ETF proxy compatible with the same equity/ETF feed family used by the rest of the Basic universe.
-- Provider messages containing “parameter is missing or invalid” now classify as unavailable instead of generic error.
+- 16 / 16 configured symbols validate on the current Twelve Data account.
+- Global provider rate limiter protects the Basic 8-credits/minute quota.
+- QQQ live/recent fetch is working and persists locally.
+- App Info shows version, build, local/UTC clock and runtime details.
+- Diagnostics JSON supports direct ChatGPT collaboration.
 
-## Current V1 universe
+## Phase 2A
+
+### Historical downloader
+
+The new **Historical Data** page downloads canonical 1-minute OHLCV bars for the currently selected asset.
+
+- User-selectable start and end datetime.
+- 3-day request chunks.
+- Global Twelve Data pacing remains active.
+- Maximum 90 days per import run in this phase.
+- Progress, request count and received-bar count are visible in the UI.
+- Provider errors stop the import cleanly and are recorded in diagnostics.
+- Empty market periods can be skipped without aborting the run.
+
+Twelve Data allows a maximum of 5,000 points in one historical response. Three-day chunks keep a 24/7 1-minute series below that ceiling while also working for US equities and ETFs.
+
+### Local historical store
+
+The old single-file JSON store has been replaced by a partitioned store:
+
+`Application Support / MarketSignalLab / BarsV2 / <symbol> / <timeframe> / YYYY-MM.json`
+
+- Bars are deduplicated by canonical bar ID.
+- Partitions are monthly.
+- Existing Phase 1 JSON files are migrated automatically when first loaded.
+- The UI exposes local count, earliest bar and latest bar.
+- Diagnostics include historical download state and storage coverage.
+
+## Current universe
 
 Tradeable:
 SPY, QQQ, NVDA, TSLA, AMD, META, AAPL, MSFT, AMZN, GLD, USO.
@@ -19,12 +46,20 @@ SPY, QQQ, NVDA, TSLA, AMD, META, AAPL, MSFT, AMZN, GLD, USO.
 Context:
 IWM, VIXY, UUP, IEF, BTC/USD.
 
-## iPad workflow
+## Test workflow
 
-1. Pull the latest `main`.
-2. Confirm **App Info → Version 0.1.5 / Build 6**.
-3. Tap **Validate Universe**. Stable symbols are skipped; only unresolved/new entries should require provider calls.
-4. Fetch QQQ.
-5. Prepare and share diagnostics.
+1. Pull latest `main`.
+2. Open **App Info** and confirm **Version 0.2.0 / Build 7**.
+3. Select **QQQ**.
+4. Open **Historical Data**.
+5. Keep the default 7-day range for the first test.
+6. Tap **Download Historical Data** and let it finish.
+7. Prepare and share Diagnostics.
+
+## Next
+
+Phase 2B builds the first local research dataset from stored bars:
+
+`canonical bars → session normalization → features → target/stop labels → walk-forward splits`
 
 The project remains signal/research only. No broker execution is implemented.
