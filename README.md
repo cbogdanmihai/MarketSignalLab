@@ -10,12 +10,15 @@ Chart, Research and Data now expose a persistent top-right interface-size contro
 
 Available modes:
 
+- Ultra Compact · 70%
 - Compact · 80%
 - Dense · 90%
 - Standard · 100%
 - Large · 115%
 
 The selection is stored locally and applies across the whole terminal: sidebar typography, controls, workspace typography, card padding and key chart dimensions all respond to the same density setting.
+
+At 80% and 70%, the left watchlist also becomes physically narrower: section spacing, minimum row height, status-dot spacing, symbol/name spacing and row insets are compressed so the sidebar behaves like a dense professional market terminal instead of only shrinking the font.
 
 
 Version 0.4.0 replaces the prototype navigation with a compact research-terminal shell inspired by professional trading workspaces.
