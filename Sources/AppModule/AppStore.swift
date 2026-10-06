@@ -1936,6 +1936,19 @@ final class AppStore: ObservableObject {
             researchUsesLockedPolicy:
                 researchSummary?.usesLockedPolicy
                 ?? false,
+            baselineAvailable:
+                baselineResult != nil,
+            baselinePassesInitialGate:
+                baselineResult?
+                    .passesInitialGate,
+            baselineMeanLongSkill:
+                baselineResult?
+                    .meanLongSkill,
+            baselineMeanShortSkill:
+                baselineResult?
+                    .meanShortSkill,
+            baselineMessage:
+                baselineMessage,
             availableCount: availableCount,
             restrictedCount: restrictedCount,
             unavailableCount: unavailableCount,
