@@ -22,12 +22,22 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let provider: String
     let selectedSymbol: String?
     let selectedStoredBars: Int
+    let selectedEarliestBar: Date?
+    let selectedLatestBar: Date?
     let selectedLatestClose: Double?
     let systemMessage: String
+
+    let historicalIsRunning: Bool
+    let historicalCompletedChunks: Int
+    let historicalTotalChunks: Int
+    let historicalBarsReceived: Int
+    let historicalMessage: String
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
     let rateLimitedCount: Int
+
     let assets: [AssetDiagnosticSnapshot]
     let events: [DiagnosticEvent]
 }
