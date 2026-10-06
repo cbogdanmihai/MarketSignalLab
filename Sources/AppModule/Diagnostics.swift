@@ -53,6 +53,12 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let lockedLabelPolicyAt: Date?
     let researchUsesLockedPolicy: Bool
 
+    let baselineAvailable: Bool
+    let baselinePassesInitialGate: Bool?
+    let baselineMeanLongSkill: Double?
+    let baselineMeanShortSkill: Double?
+    let baselineMessage: String
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
