@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.6.2"
-    private let fallbackBuild = "28"
-    private let releaseName = "Chart 3.1 — Visible Range Hotfix"
+    private let fallbackVersion = "0.6.3"
+    private let fallbackBuild = "29"
+    private let releaseName = "Chart 3.2 — ClosedRange Parser Hotfix"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
