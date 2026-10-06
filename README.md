@@ -4,6 +4,20 @@ Native iPad Swift Playgrounds research terminal for market-data ingestion, chart
 
 ## Frontend redesign
 
+### Global density control
+
+Chart, Research and Data now expose a persistent top-right interface-size control.
+
+Available modes:
+
+- Compact · 80%
+- Dense · 90%
+- Standard · 100%
+- Large · 115%
+
+The selection is stored locally and applies across the whole terminal: sidebar typography, controls, workspace typography, card padding and key chart dimensions all respond to the same density setting.
+
+
 Version 0.4.0 replaces the prototype navigation with a compact research-terminal shell inspired by professional trading workspaces.
 
 The design principles are:
