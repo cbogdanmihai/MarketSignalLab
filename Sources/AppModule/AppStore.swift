@@ -615,6 +615,9 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            storageOverview[asset.symbol] =
+                storageStats
+
             validations[asset.symbol] = AssetValidationState(
                 availability: .available,
                 message: "\(asset.providerSymbol) works on the current Twelve Data account.",
@@ -820,6 +823,9 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            storageOverview[asset.symbol] =
+                storageStats
+
             historyMessage =
                 "Historical import complete. Received \(historyBarsSaved) bars; local deduplicated total \(storageStats.count)."
 
@@ -908,6 +914,9 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            storageOverview[asset.symbol] =
+                storageStats
+
             guard localBars.count >= 300 else {
                 researchRows = []
                 researchFolds = []
@@ -993,6 +1002,9 @@ final class AppStore: ObservableObject {
                 symbol: asset.symbol,
                 timeframe: "1min"
             )
+
+            storageOverview[asset.symbol] =
+                storageStats
 
             guard localBars.count >= 300 else {
                 labelCalibration = nil
