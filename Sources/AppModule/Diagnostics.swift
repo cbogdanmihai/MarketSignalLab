@@ -33,6 +33,13 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let historicalBarsReceived: Int
     let historicalMessage: String
 
+    let researchRowCount: Int
+    let researchFeatureCount: Int
+    let researchFoldCount: Int
+    let researchLongTargetRate: Double?
+    let researchShortTargetRate: Double?
+    let researchMessage: String
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
