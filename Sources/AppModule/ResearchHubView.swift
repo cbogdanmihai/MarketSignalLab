@@ -117,8 +117,6 @@ struct ResearchHubView: View {
 
             Spacer()
 
-            TerminalDensityControl()
-
             Picker(
                 "Scope",
                 selection: $scope
@@ -131,7 +129,12 @@ struct ResearchHubView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 260)
+            .frame(
+                width:
+                    260 * densityScale
+            )
+
+            TerminalDensityControl()
         }
     }
 
@@ -476,7 +479,10 @@ struct ResearchHubView: View {
                         }
                     }
                 }
-                .frame(height: 150)
+                .frame(
+                    height:
+                        150 * densityScale
+                )
 
                 HStack(spacing: 8) {
                     Label(
@@ -1197,6 +1203,9 @@ struct ResearchHubView: View {
 }
 
 private struct ResearchCard<Content: View>: View {
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     let title: String
     let subtitle: String
     let content: Content
@@ -1247,6 +1256,9 @@ private struct ResearchCard<Content: View>: View {
 }
 
 private struct MetricTile: View {
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     let title: String
     let value: String
     let subtitle: String
@@ -1271,7 +1283,8 @@ private struct MetricTile: View {
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: 92,
+            minHeight:
+                92 * densityScale,
             alignment: .leading
         )
         .padding(
@@ -1331,6 +1344,9 @@ private struct RateMetric: View {
 }
 
 private struct FoldCard: View {
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     let fold: WalkForwardFold
 
     var body: some View {
@@ -1357,10 +1373,13 @@ private struct FoldCard: View {
             )
         }
         .frame(
-            width: 220,
+            width:
+                220 * densityScale,
             alignment: .leading
         )
-        .padding(12)
+        .padding(
+            12 * densityScale
+        )
         .background(
             Color(
                 uiColor:
