@@ -31,9 +31,6 @@ final class AppStore: ObservableObject {
 
     private var diagnosticEvents: [DiagnosticEvent] = []
 
-    private let validationSpacingNanoseconds: UInt64 =
-        8_000_000_000
-
     init(
         repository: any BarRepository = JSONBarRepository()
     ) {
@@ -142,8 +139,8 @@ final class AppStore: ObservableObject {
         }
 
         status.message = force
-            ? "Force-validating \(assets.count) symbols against Twelve Data…"
-            : "Validating unresolved symbols against Twelve Data…"
+            ? "Force-validating \(assets.count) symbols against Twelve Data with API pacing…"
+            : "Validating unresolved symbols against Twelve Data with API pacing…"
 
         log("info", status.message)
 
@@ -204,12 +201,6 @@ final class AppStore: ObservableObject {
 
             validationProgress = index + 1
             saveValidationCache()
-
-            if index < assets.count - 1 {
-                try? await Task.sleep(
-                    nanoseconds: validationSpacingNanoseconds
-                )
-            }
         }
 
         status.message =
