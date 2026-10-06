@@ -109,3 +109,19 @@ The repository now includes a macOS GitHub Actions iOS type-check workflow for e
 This was introduced after the dynamic-chart refactor so compiler errors are caught across the whole module instead of being discovered one at a time in Swift Playgrounds.
 
 A full iOS Simulator SDK type-check was run successfully after the Chart 3.3 fixes.
+
+
+## Runtime performance guard
+
+Chart 3.4 removes the startup bottleneck discovered with ~16K local QQQ 1-minute bars.
+
+Changes:
+
+- chart aggregation is cached in view state instead of recomputed on every SwiftUI render;
+- aggregation runs off the main UI actor;
+- only the visible viewport plus indicator/session lookback is rendered;
+- horizontal pan is implemented against the lightweight viewport instead of rendering the entire archive into Swift Charts;
+- the root view no longer performs a duplicate selected-symbol load plus a full-universe storage scan on startup;
+- selected-symbol storage statistics are derived from the already loaded bars instead of decoding the same local history a second time.
+
+The repository-wide iOS Swift typecheck passes after these changes.
