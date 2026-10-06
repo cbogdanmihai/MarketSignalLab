@@ -160,7 +160,7 @@ struct HistoricalDataView: View {
                                 ? "Downloading…"
                                 : "Download Historical Data",
                             systemImage:
-                                "arrow.down.to.line.compact"
+                                "arrow.down.circle"
                         )
                     }
                     .disabled(
