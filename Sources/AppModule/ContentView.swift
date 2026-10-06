@@ -10,6 +10,9 @@ struct ContentView: View {
     @State
     private var showingHistoricalData = false
 
+    @State
+    private var showingResearchDataset = false
+
     var body: some View {
         NavigationSplitView {
             List(
@@ -42,6 +45,15 @@ struct ContentView: View {
                         Label(
                             "Historical Data",
                             systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+
+                    Button {
+                        showingResearchDataset = true
+                    } label: {
+                        Label(
+                            "Research Dataset",
+                            systemImage: "tablecells"
                         )
                     }
 
@@ -160,6 +172,12 @@ struct ContentView: View {
             isPresented: $showingHistoricalData
         ) {
             HistoricalDataView()
+                .environmentObject(store)
+        }
+        .sheet(
+            isPresented: $showingResearchDataset
+        ) {
+            ResearchDatasetView()
                 .environmentObject(store)
         }
     }
@@ -516,7 +534,7 @@ private struct AssetDashboard: View {
                 GroupBox("Phase 2") {
                     Text(
                         """
-                        Historical ingestion is now active. Use Historical Data to build the local 1-minute research store; feature engineering and labels come next.
+                        Historical ingestion and the first causal research-dataset pipeline are active. Use Research Dataset to build features, target/stop labels and purged walk-forward folds locally.
                         """
                     )
                     .frame(
