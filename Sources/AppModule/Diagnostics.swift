@@ -48,6 +48,11 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let labelCalibrationMessage: String
     let labelCalibrationCandidates: [LabelCalibrationCandidateResult]
 
+    let lockedLabelPolicyName: String?
+    let lockedLabelPolicyID: String?
+    let lockedLabelPolicyAt: Date?
+    let researchUsesLockedPolicy: Bool
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
