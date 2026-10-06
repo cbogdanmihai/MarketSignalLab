@@ -1,10 +1,10 @@
-# MarketSignalLab 0.6.0 — Phase 2B.7 Policy Lock
+# MarketSignalLab 0.7.0 — Phase 2C.1 Baseline + Data Operations
 
-MarketSignalLab has reached the point where QQQ has an accepted asymmetric label policy and can move from label design into model research.
+Native iPad Swift Playgrounds research terminal for market-data ingestion, chart analysis, causal feature research, label calibration and walk-forward model validation.
 
-## Accepted QQQ policy
+## Current QQQ research state
 
-Current accepted calibration:
+The QQQ label policy is locked and remains frozen unless explicitly changed:
 
 - LONG target: 8.0× ATR
 - LONG stop: 4.0× ATR
@@ -12,116 +12,118 @@ Current accepted calibration:
 - SHORT stop: 4.5× ATR
 - horizon: 90 minutes
 
-Observed calibration event rates are approximately:
+The accepted calibration rates were approximately:
 
 - LONG target: 9.4%
 - SHORT target: 12.9%
 
-Both are inside the 8–20% acceptance band.
+Both are inside the 8–20% target-event acceptance band.
 
-## Policy Lock
+## Phase 2C.1 baseline
 
-The Research workspace now exposes **Lock & Rebuild** when the recommended calibration is accepted.
+Research now includes the first local out-of-sample model baseline.
 
-Locking does four things:
+For each of the three chronological walk-forward folds and for LONG and SHORT separately, the app now:
 
-1. Persists the selected policy per symbol in local UserDefaults.
-2. Freezes the policy so later dataset builds use exactly the same label definition.
-3. Rebuilds the full local research dataset with the locked asymmetric ATR thresholds.
-4. Marks the dataset as using a locked policy in Research, App Info and Diagnostics.
+1. builds the locked-policy research rows;
+2. fits feature standardization on the training block only;
+3. trains a logistic classifier on the training block only;
+4. computes the no-skill probability from training prevalence;
+5. selects the classification threshold on validation only;
+6. scores the untouched test block;
+7. reports Brier score, Brier skill vs no-skill, precision, recall, F1 and accuracy.
 
-The locked policy survives app restarts and historical-data refreshes until it is explicitly changed or removed.
+The first gate is deliberately conservative: mean Brier skill must be positive for both LONG and SHORT before the pipeline advances.
 
-## Research dataset behavior
+Probability calibration and richer models come after this baseline.
 
-The dataset builder now accepts either:
+## Historical data operations
 
-- the baseline fixed label configuration, or
-- a locked LabelCalibrationPolicy.
+Historical Data now supports both selected-symbol and bulk downloads.
 
-For a locked ATR-adaptive policy, each row calculates ATR(14) causally at that timestamp, then derives independent LONG and SHORT target/stop thresholds from the frozen multipliers.
+Bulk settings include:
 
-Features remain unchanged and causal.
+- Tradeable / Context / All universe scope;
+- shared start and end timestamps;
+- 1-minute historical bars;
+- skip symbols whose local coverage already spans the requested range;
+- maximum request count;
+- approximate provider runtime;
+- per-asset and per-chunk progress;
+- received-bar and skipped-symbol counts.
 
-Walk-forward folds remain session-safe and chronological.
+Bulk downloads are serialized through the shared Twelve Data rate limiter. Keep Swift Playgrounds open while a long bulk import is running.
 
-## Leakage discipline
+Downloading new history invalidates research/calibration/model caches for that symbol, but a locked label policy remains frozen.
 
-Label calibration continues to use the pre-test calibration window only.
+## Add Ticker
 
-The policy is selected before model training and then frozen.
+The Add Ticker sheet now uses explicit iPad keyboard focus instead of Form text-field behavior.
 
-The next phase must not re-optimize the label policy against walk-forward test outcomes.
+It supports:
 
-## Next
+- direct ticker/provider-symbol input;
+- optional display name;
+- Equity / ETF / Crypto / Index / Commodity proxy;
+- provider validation when an API key is available;
+- persistent local watchlist storage.
 
-After QQQ is locked and rebuilt, Phase 2C starts the first local baseline classifier.
+## Debugging
 
-Planned baseline sequence:
+Runtime events now go to three places:
 
-- no-skill prevalence baseline
-- logistic classifier
-- probability calibration
-- walk-forward train / validation / test scoring
-- Brier score and calibration error
-- precision / recall by LONG and SHORT target
-- threshold selection only on validation
-- final reporting on untouched test sessions
+- the existing diagnostics JSON;
+- the Swift Playgrounds console via tagged `print` output;
+- an in-app **System → Debug Console** view.
 
-No live signal is allowed into the scanner until the baseline beats the no-skill reference out of sample.
+Console lines use the form:
 
-The project remains signal/research only. No broker execution is implemented.
+`[MarketSignalLab][INFO] ...`
+`[MarketSignalLab][WARNING] ...`
+`[MarketSignalLab][ERROR] ...`
 
+The in-app console can be filtered and cleared.
 
-## Chart 3 — TradingView-style dynamic viewport
+## Chart
 
-The chart now uses candle index rather than wall-clock time for the horizontal axis. This removes large overnight/weekend gaps and makes pan/zoom behavior closer to professional charting terminals.
-
-Adaptive interval defaults:
+The chart remains the dynamic candle-index implementation:
 
 - 1m → 1D
 - 5m → 1D
 - 15m → 5D
 - 30m → 5D
 - 1h → 1M
+- horizontal pan;
+- pinch zoom;
+- +/- zoom;
+- Fit and Latest controls;
+- visible-range price scaling;
+- synchronized volume;
+- explicit crosshair mode.
 
-Changing timeframe automatically selects a useful default range and jumps to the latest data. Manual 1D / 5D / 1M / ALL remains available.
+Chart aggregation runs off the UI actor and only the visible viewport plus required indicator lookback is rendered.
 
-Additional behavior:
+## Leakage discipline
 
-- horizontal drag scrolls through candles;
-- pinch gesture zooms candle density;
-- +/- magnifiers zoom around the visible center;
-- Fit resets the selected range;
-- Latest jumps back to the newest candle;
-- price and volume share the same scroll position;
-- the right price scale rescales to the visible candles;
-- the toolbar reports visible candles vs loaded candles;
-- full current local history is retained up to a 20,000 aggregated-bar safety cap.
+The rules remain strict:
 
-Crosshair remains an explicit inspection mode so it does not steal the normal scroll gesture.
+- label calibration does not use walk-forward test blocks;
+- label policy is locked before model training;
+- feature scaling is fitted on train only;
+- logistic model is trained on train only;
+- decision threshold is selected on validation only;
+- test blocks are used only for final fold scoring.
 
+No live signal is allowed into the scanner until the baseline demonstrates out-of-sample skill.
 
-## Compiler guard
+## Verification
 
-The repository now includes a macOS GitHub Actions iOS type-check workflow for every Swift source under `Sources/AppModule`.
+The repository contains a macOS GitHub Actions workflow that type-checks every Swift file under `Sources/AppModule` against the iOS Simulator SDK.
 
-This was introduced after the dynamic-chart refactor so compiler errors are caught across the whole module instead of being discovered one at a time in Swift Playgrounds.
+Current release:
 
-A full iOS Simulator SDK type-check was run successfully after the Chart 3.3 fixes.
+- Version: 0.7.0
+- Build: 32
+- Release: Phase 2C.1 — Baseline + Data Operations
 
-
-## Runtime performance guard
-
-Chart 3.4 removes the startup bottleneck discovered with ~16K local QQQ 1-minute bars.
-
-Changes:
-
-- chart aggregation is cached in view state instead of recomputed on every SwiftUI render;
-- aggregation runs off the main UI actor;
-- only the visible viewport plus indicator/session lookback is rendered;
-- horizontal pan is implemented against the lightweight viewport instead of rendering the entire archive into Swift Charts;
-- the root view no longer performs a duplicate selected-symbol load plus a full-universe storage scan on startup;
-- selected-symbol storage statistics are derived from the already loaded bars instead of decoding the same local history a second time.
-
-The repository-wide iOS Swift typecheck passes after these changes.
+The project remains signal/research only. No broker execution is implemented.
