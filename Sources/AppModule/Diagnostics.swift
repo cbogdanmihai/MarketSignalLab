@@ -46,6 +46,7 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let labelCalibrationLongTargetRate: Double?
     let labelCalibrationShortTargetRate: Double?
     let labelCalibrationMessage: String
+    let labelCalibrationCandidates: [LabelCalibrationCandidateResult]
 
     let availableCount: Int
     let restrictedCount: Int
