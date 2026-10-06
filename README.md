@@ -1,43 +1,30 @@
-# MarketSignalLab 0.1.3 — Rate-limit hardening
+# MarketSignalLab 0.1.5 — Provider compatibility fixes
 
 Native iPad Swift Playgrounds research app for market-data ingestion and signal research.
 
-## Phase 1.3 additions
+## Phase 1.5 additions
 
-- App-wide Twelve Data request pacing through a shared actor.
-- Basic-plan-safe spacing: one request slot every 8.2 seconds.
-- The limiter applies to both universe validation and manual bar fetches.
-- HTTP 429 honors `Retry-After` when available and otherwise applies a 65-second cooldown.
-- Successful responses with `api-credits-left: 0` proactively defer the next request.
-- Validation no longer stacks a second manual delay on top of provider pacing.
-- Manual Fetch is disabled while universe validation is running.
-- Stable symbol validation states are still preserved across temporary throttling.
-- Diagnostics workflow remains available and does not include the API key.
+- Keeps the global Twelve Data rate limiter from v0.1.3.
+- Adds the App Info runtime/version page from v0.1.4.
+- Fixes crypto `/time_series` decoding by allowing crypto metadata to omit `symbol` and `exchange_timezone`.
+- Falls back to the configured asset timezone; `BTC/USD` therefore uses UTC.
+- Replaces the unavailable direct `VIX` index entry with `VIXY`, a US-listed VIX short-term futures ETF proxy compatible with the same equity/ETF feed family used by the rest of the Basic universe.
+- Provider messages containing “parameter is missing or invalid” now classify as unavailable instead of generic error.
 
-## Why this change
+## Current V1 universe
 
-Twelve Data Basic currently provides 8 API credits per minute and 800 per day. A standard `/time_series` request costs 1 credit per symbol. The app therefore serializes requests globally instead of letting validation and manual fetches compete for the same quota.
+Tradeable:
+SPY, QQQ, NVDA, TSLA, AMD, META, AAPL, MSFT, AMZN, GLD, USO.
+
+Context:
+IWM, VIXY, UUP, IEF, BTC/USD.
 
 ## iPad workflow
 
 1. Pull the latest `main`.
-2. Open the `.swiftpm` project in Swift Playgrounds.
-3. Settings → enter the Twelve Data API key → Save.
-4. Tap **Validate Universe** once.
-5. Let it complete; do not use **Force Revalidate** unless needed.
-6. Fetch QQQ or another green symbol.
-7. **Prepare Diagnostics** → **Share Diagnostics** → send the JSON to ChatGPT.
-
-## Status meanings
-
-- Green check: available on the current account.
-- Orange lock: access/subscription restriction.
-- Red x: unavailable or invalid symbol/data.
-- Orange clock: temporarily rate limited.
-- Yellow warning: other provider/network/decoding error.
-
-## Architecture
-
-`assets.json → shared rate limiter → validator/provider → canonical MarketBar → local repository → diagnostics`
+2. Confirm **App Info → Version 0.1.5 / Build 6**.
+3. Tap **Validate Universe**. Stable symbols are skipped; only unresolved/new entries should require provider calls.
+4. Fetch QQQ.
+5. Prepare and share diagnostics.
 
 The project remains signal/research only. No broker execution is implemented.
