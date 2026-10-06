@@ -111,7 +111,7 @@ struct ContentView: View {
         } detail: {
             detail
         }
-        .sheet(
+        .fullScreenCover(
             isPresented:
                 $showingAddTicker
         ) {
