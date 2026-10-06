@@ -582,15 +582,18 @@ final class AppStore: ObservableObject {
         }
 
         do {
-            bars = try await repository.load(
-                symbol: asset.symbol,
-                timeframe: "1min"
-            )
+            let loadedBars =
+                try await repository.load(
+                    symbol: asset.symbol,
+                    timeframe: "1min"
+                )
 
-            storageStats = try await repository.stats(
-                symbol: asset.symbol,
-                timeframe: "1min"
-            )
+            bars = loadedBars
+
+            storageStats =
+                BarStorageStats.from(
+                    bars: loadedBars
+                )
 
             storageOverview[asset.symbol] =
                 storageStats
@@ -650,15 +653,18 @@ final class AppStore: ObservableObject {
 
             try await repository.save(downloaded)
 
-            bars = try await repository.load(
-                symbol: asset.symbol,
-                timeframe: "1min"
-            )
+            let loadedBars =
+                try await repository.load(
+                    symbol: asset.symbol,
+                    timeframe: "1min"
+                )
 
-            storageStats = try await repository.stats(
-                symbol: asset.symbol,
-                timeframe: "1min"
-            )
+            bars = loadedBars
+
+            storageStats =
+                BarStorageStats.from(
+                    bars: loadedBars
+                )
 
             storageOverview[asset.symbol] =
                 storageStats
