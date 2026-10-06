@@ -869,6 +869,8 @@ final class AppStore: ObservableObject {
                 labelCalibration?.recommended?.shortTargetRate,
             labelCalibrationMessage:
                 labelCalibrationMessage,
+            labelCalibrationCandidates:
+                labelCalibration?.candidates ?? [],
             availableCount: availableCount,
             restrictedCount: restrictedCount,
             unavailableCount: unavailableCount,
