@@ -24,6 +24,8 @@ final class AppStore: ObservableObject {
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
+    let sessionStartedAt = Date()
+
     private let repository: any BarRepository
 
     private let validationDefaultsKey =
