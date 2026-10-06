@@ -594,12 +594,19 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            bars = localBars
+
+            storageStats = try await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
             guard localBars.count >= 300 else {
                 researchRows = []
                 researchFolds = []
                 researchSummary = nil
                 researchMessage =
-                    "Need at least 300 local 1-minute bars before building a research dataset."
+                    "Only \(localBars.count) local 1-minute bars found. Open Historical Data and download at least one full session before building the research dataset."
 
                 log(
                     "warning",
