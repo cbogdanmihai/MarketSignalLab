@@ -529,8 +529,7 @@ struct ResearchHubView: View {
                             value:
                                 recommended.shortTargetRate,
                             desired:
-                                calibration.targetBandLow
-                                ...calibration.targetBandHigh
+                                calibration.targetBandLow...calibration.targetBandHigh
                         )
 
                         VStack(
