@@ -120,14 +120,14 @@
     "dataSymbol": null
   },
   {
-    "symbol": "VIX",
-    "displayName": "CBOE Volatility Index",
-    "assetClass": "index",
+    "symbol": "VIXY",
+    "displayName": "ProShares VIX Short-Term Futures ETF (VIX proxy)",
+    "assetClass": "etf",
     "role": "context",
-    "timezone": "America/Chicago",
+    "timezone": "America/New_York",
     "modelGroup": "context",
     "optionsEnabled": false,
-    "dataSymbol": "VIX"
+    "dataSymbol": "VIXY"
   },
   {
     "symbol": "UUP",
