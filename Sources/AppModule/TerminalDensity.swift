@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum TerminalDensity: String, CaseIterable, Identifiable {
+    case ultraCompact
     case compact
     case dense
     case standard
@@ -15,6 +16,8 @@ enum TerminalDensity: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .ultraCompact:
+            return "Ultra Compact"
         case .compact:
             return "Compact"
         case .dense:
@@ -28,6 +31,8 @@ enum TerminalDensity: String, CaseIterable, Identifiable {
 
     var percentage: Int {
         switch self {
+        case .ultraCompact:
+            return 70
         case .compact:
             return 80
         case .dense:
@@ -45,6 +50,8 @@ enum TerminalDensity: String, CaseIterable, Identifiable {
 
     var dynamicTypeSize: DynamicTypeSize {
         switch self {
+        case .ultraCompact:
+            return .xSmall
         case .compact:
             return .xSmall
         case .dense:
@@ -58,7 +65,8 @@ enum TerminalDensity: String, CaseIterable, Identifiable {
 
     var controlSize: ControlSize {
         switch self {
-        case .compact:
+        case .ultraCompact,
+             .compact:
             return .mini
         case .dense:
             return .small
