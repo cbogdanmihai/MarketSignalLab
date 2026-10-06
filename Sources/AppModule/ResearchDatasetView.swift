@@ -1,11 +1,16 @@
 import SwiftUI
 
 struct ResearchDatasetView: View {
-    @Environment(\.dismiss)
-    private var dismiss
-
     @EnvironmentObject
     private var store: AppStore
+
+    let onClose: () -> Void
+
+    init(
+        onClose: @escaping () -> Void = {}
+    ) {
+        self.onClose = onClose
+    }
 
     private let labelConfig =
         ResearchLabelConfig.defaultIntraday
@@ -283,7 +288,7 @@ struct ResearchDatasetView: View {
                     placement: .cancellationAction
                 ) {
                     Button("Close") {
-                        dismiss()
+                        onClose()
                     }
                 }
             }
