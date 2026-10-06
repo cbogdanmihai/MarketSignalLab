@@ -80,6 +80,9 @@ struct WalkForwardFold: Identifiable, Codable, Sendable {
 
 struct ResearchDatasetSummary: Codable, Sendable {
     let symbol: String
+    let labelPolicyID: String?
+    let labelPolicyName: String
+    let usesLockedPolicy: Bool
     let rawBarCount: Int
     let eligibleBarCount: Int
     let rowCount: Int
@@ -105,7 +108,8 @@ enum ResearchDatasetBuilder {
     static func build(
         asset: AssetConfig,
         bars: [MarketBar],
-        labelConfig: ResearchLabelConfig = .defaultIntraday
+        labelConfig: ResearchLabelConfig = .defaultIntraday,
+        labelPolicy: LabelCalibrationPolicy? = nil
     ) -> ResearchDatasetBuildResult {
         let ordered = bars.sorted {
             $0.timestamp < $1.timestamp
@@ -128,14 +132,19 @@ enum ResearchDatasetBuilder {
                 contentsOf: buildSessionRows(
                     asset: asset,
                     session: session,
-                    labelConfig: labelConfig
+                    labelConfig: labelConfig,
+                    labelPolicy: labelPolicy
                 )
             )
         }
 
+        let horizonMinutes =
+            labelPolicy?.horizonMinutes
+            ?? labelConfig.horizonMinutes
+
         let folds = makeWalkForwardFolds(
             rows: rows,
-            horizonMinutes: labelConfig.horizonMinutes
+            horizonMinutes: horizonMinutes
         )
 
         let rowCount = rows.count
@@ -167,6 +176,13 @@ enum ResearchDatasetBuilder {
 
         let summary = ResearchDatasetSummary(
             symbol: asset.symbol,
+            labelPolicyID:
+                labelPolicy?.id,
+            labelPolicyName:
+                labelPolicy?.name
+                ?? "Baseline fixed 0.75% / 0.35%",
+            usesLockedPolicy:
+                labelPolicy != nil,
             rawBarCount: ordered.count,
             eligibleBarCount: eligibleBarCount,
             rowCount: rowCount,
@@ -299,14 +315,19 @@ enum ResearchDatasetBuilder {
     private static func buildSessionRows(
         asset: AssetConfig,
         session: SessionBars,
-        labelConfig: ResearchLabelConfig
+        labelConfig: ResearchLabelConfig,
+        labelPolicy: LabelCalibrationPolicy?
     ) -> [ResearchRow] {
         let bars = session.bars
 
         let minimumHistory = 60
 
+        let horizonMinutes =
+            labelPolicy?.horizonMinutes
+            ?? labelConfig.horizonMinutes
+
         guard bars.count >
-                minimumHistory + labelConfig.horizonMinutes else {
+                minimumHistory + horizonMinutes else {
             return []
         }
 
@@ -370,7 +391,7 @@ enum ResearchDatasetBuilder {
         var result: [ResearchRow] = []
 
         let lastEligibleIndex =
-            bars.count - labelConfig.horizonMinutes - 1
+            bars.count - horizonMinutes - 1
 
         guard lastEligibleIndex >= minimumHistory else {
             return []
@@ -445,7 +466,9 @@ enum ResearchDatasetBuilder {
             let labels = evaluateLabels(
                 bars: bars,
                 entryIndex: i,
-                config: labelConfig
+                atr14Pct: atr14,
+                config: labelConfig,
+                labelPolicy: labelPolicy
             )
 
             let totalSessionMinutes =
@@ -535,26 +558,66 @@ enum ResearchDatasetBuilder {
     private static func evaluateLabels(
         bars: [MarketBar],
         entryIndex: Int,
-        config: ResearchLabelConfig
+        atr14Pct: Double,
+        config: ResearchLabelConfig,
+        labelPolicy: LabelCalibrationPolicy?
     ) -> LabelResult {
         let entry = bars[entryIndex].close
 
+        let horizonMinutes =
+            labelPolicy?.horizonMinutes
+            ?? config.horizonMinutes
+
+        let thresholds: (
+            longTargetPct: Double,
+            longStopPct: Double,
+            shortTargetPct: Double,
+            shortStopPct: Double
+        )
+
+        if let labelPolicy {
+            thresholds =
+                labelPolicy.thresholds(
+                    atr14Pct: atr14Pct
+                )
+
+        } else {
+            thresholds = (
+                config.targetPct,
+                config.stopPct,
+                config.targetPct,
+                config.stopPct
+            )
+        }
+
         let endIndex = min(
-            entryIndex + config.horizonMinutes,
+            entryIndex + horizonMinutes,
             bars.count - 1
         )
 
         let longTarget =
-            entry * (1 + config.targetPct)
+            entry * (
+                1
+                + thresholds.longTargetPct
+            )
 
         let longStop =
-            entry * (1 - config.stopPct)
+            entry * (
+                1
+                - thresholds.longStopPct
+            )
 
         let shortTarget =
-            entry * (1 - config.targetPct)
+            entry * (
+                1
+                - thresholds.shortTargetPct
+            )
 
         let shortStop =
-            entry * (1 + config.stopPct)
+            entry * (
+                1
+                + thresholds.shortStopPct
+            )
 
         var longOutcome: ResearchOutcome?
         var shortOutcome: ResearchOutcome?
