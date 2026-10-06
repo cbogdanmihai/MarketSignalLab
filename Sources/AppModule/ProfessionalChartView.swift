@@ -63,7 +63,7 @@ enum ProfessionalChartRange: String, CaseIterable, Identifiable {
     }
 }
 
-private struct ProfessionalChartPoint: Identifiable {
+private struct ProfessionalChartPoint: Identifiable, Sendable {
     let index: Int
     let bar: MarketBar
     let sma20: Double?
@@ -116,22 +116,33 @@ struct ProfessionalChartView: View {
     private var pinchBaseZoom = 1.0
 
     @State
+    private var panStartPosition: Double?
+
+    @State
     private var inspectionMode = false
 
-    private var aggregatedBars: [MarketBar] {
-        aggregate(
-            bars: bars,
-            minutes: interval.rawValue
-        )
-    }
+    @State
+    private var preparedBars: [MarketBar] = []
+
+    @State
+    private var isPreparingChart = false
 
     private var chartBars: [MarketBar] {
-        // Current research histories are small enough to keep the complete
-        // aggregated series in memory. A generous cap protects Swift Charts
-        // from accidental multi-year 1-minute archives.
-        Array(
-            aggregatedBars.suffix(20_000)
-        )
+        preparedBars
+    }
+
+    private var preparationKey: String {
+        let lastStamp =
+            bars.last?.timestamp.timeIntervalSince1970
+            ?? 0
+
+        return [
+            asset.symbol,
+            String(interval.rawValue),
+            String(bars.count),
+            String(lastStamp)
+        ]
+        .joined(separator: "|")
     }
 
     private var baseVisibleBarCount: Int {
@@ -224,7 +235,11 @@ struct ProfessionalChartView: View {
     }
 
     private var visibleEndIndex: Int {
-        min(
+        guard !chartBars.isEmpty else {
+            return 0
+        }
+
+        return min(
             chartBars.count - 1,
             visibleStartIndex
                 + visibleBarCount
@@ -233,41 +248,122 @@ struct ProfessionalChartView: View {
     }
 
     private var visibleBarsForScale: [MarketBar] {
-        guard
-            !chartBars.isEmpty,
-            visibleStartIndex
-                <= visibleEndIndex
-        else {
+        guard !chartBars.isEmpty else {
             return []
         }
 
-        let range =
-            visibleStartIndex...visibleEndIndex
-
         return Array(
-            chartBars[range]
+            chartBars
+                .dropFirst(visibleStartIndex)
+                .prefix(visibleBarCount)
+        )
+    }
+
+    private var renderStartIndex: Int {
+        guard
+            !chartBars.isEmpty,
+            chartBars.indices.contains(
+                visibleStartIndex
+            )
+        else {
+            return 0
+        }
+
+        let timezone =
+            TimeZone(
+                identifier: asset.timezone
+            )
+            ?? .current
+
+        var calendar =
+            Calendar(
+                identifier: .gregorian
+            )
+
+        calendar.timeZone =
+            timezone
+
+        let targetDay =
+            calendar.dateComponents(
+                [.year, .month, .day],
+                from:
+                    chartBars[
+                        visibleStartIndex
+                    ].timestamp
+            )
+
+        var sessionStart =
+            visibleStartIndex
+
+        while sessionStart > 0 {
+            let previous =
+                chartBars[
+                    sessionStart - 1
+                ]
+
+            let previousDay =
+                calendar.dateComponents(
+                    [.year, .month, .day],
+                    from:
+                        previous.timestamp
+                )
+
+            if previousDay != targetDay {
+                break
+            }
+
+            sessionStart -= 1
+        }
+
+        let indicatorLookback = max(
+            0,
+            visibleStartIndex - 60
+        )
+
+        return min(
+            sessionStart,
+            indicatorLookback
         )
     }
 
     private var points: [ProfessionalChartPoint] {
-        buildPoints(
-            bars: chartBars
+        guard !chartBars.isEmpty else {
+            return []
+        }
+
+        let start =
+            renderStartIndex
+
+        let count =
+            visibleEndIndex
+            - start
+            + 1
+
+        guard count > 0 else {
+            return []
+        }
+
+        let slice =
+            Array(
+                chartBars
+                    .dropFirst(start)
+                    .prefix(count)
+            )
+
+        return buildPoints(
+            bars: slice,
+            indexOffset: start
         )
     }
 
     private var selectedPoint: ProfessionalChartPoint? {
-        guard
-            let selectedIndex,
-            points.indices.contains(
-                selectedIndex
-            )
-        else {
+        guard let selectedIndex else {
             return nil
         }
 
-        return points[
-            selectedIndex
-        ]
+        return points.first {
+            $0.index == selectedIndex
+        }
     }
 
     private var yDomain: ClosedRange<Double> {
@@ -317,6 +413,28 @@ struct ProfessionalChartView: View {
         )
     }
 
+    private var xDomain: ClosedRange<Double> {
+        let lower =
+            Double(visibleStartIndex)
+            - 0.5
+
+        let upper =
+            Double(
+                max(
+                    visibleEndIndex,
+                    visibleStartIndex
+                )
+            )
+            + 0.5
+
+        return ClosedRange(
+            uncheckedBounds: (
+                lower: lower,
+                upper: upper
+            )
+        )
+    }
+
     var body: some View {
         VStack(
             alignment: .leading,
@@ -337,7 +455,25 @@ struct ProfessionalChartView: View {
                 )
             }
 
-            if chartBars.count >= 2 {
+            if isPreparingChart {
+                VStack(spacing: 10) {
+                    ProgressView()
+
+                    Text(
+                        "Preparing \(interval.label) chart…"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight:
+                        420 * densityScale
+                )
+
+            } else if chartBars.count >= 2 {
                 priceChart
 
                 if showVolume {
@@ -356,15 +492,10 @@ struct ProfessionalChartView: View {
                 .frame(height: 360)
             }
         }
-        .onAppear {
-            applyRecommendedViewport(
-                for: interval
-            )
-        }
-        .onChange(
-            of: bars.last?.timestamp
-        ) { _, _ in
-            scrollToLatest()
+        .task(
+            id: preparationKey
+        ) {
+            await prepareChartData()
         }
         .onChange(
             of: zoomLevel
@@ -562,7 +693,9 @@ struct ProfessionalChartView: View {
                     "\(visibleBarCount) visible / \(chartBars.count) loaded · \(interval.label)"
                 )
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(
+                    .secondary
+                )
             }
         }
     }
@@ -657,7 +790,9 @@ struct ProfessionalChartView: View {
                             "SMA20"
                         )
                     )
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(
+                        .orange
+                    )
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1
@@ -683,7 +818,9 @@ struct ProfessionalChartView: View {
                             "SMA50"
                         )
                     )
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(
+                        .purple
+                    )
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1
@@ -709,7 +846,9 @@ struct ProfessionalChartView: View {
                             "VWAP"
                         )
                     )
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(
+                        .blue
+                    )
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1,
@@ -755,20 +894,11 @@ struct ProfessionalChartView: View {
                 )
             }
         }
+        .chartXScale(
+            domain: xDomain
+        )
         .chartYScale(
             domain: yDomain
-        )
-        .chartScrollableAxes(
-            .horizontal
-        )
-        .chartXVisibleDomain(
-            length:
-                Double(
-                    visibleBarCount
-                )
-        )
-        .chartScrollPosition(
-            x: $scrollPosition
         )
         .chartXAxis {
             AxisMarks(
@@ -815,51 +945,17 @@ struct ProfessionalChartView: View {
         }
         .chartOverlay { proxy in
             GeometryReader { geometry in
-                if inspectionMode {
-                    Rectangle()
-                        .fill(.clear)
-                        .contentShape(
-                            Rectangle()
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(
+                        Rectangle()
+                    )
+                    .gesture(
+                        chartDragGesture(
+                            proxy: proxy,
+                            geometry: geometry
                         )
-                        .gesture(
-                            DragGesture(
-                                minimumDistance: 0
-                            )
-                            .onChanged { value in
-                                guard let anchor =
-                                        proxy.plotFrame
-                                else {
-                                    return
-                                }
-
-                                let plotFrame =
-                                    geometry[anchor]
-
-                                let x =
-                                    value.location.x
-                                    - plotFrame.origin.x
-
-                                if let raw:
-                                    Double =
-                                    proxy.value(
-                                        atX: x
-                                    ) {
-
-                                    selectedIndex =
-                                        nearestIndex(
-                                            raw
-                                        )
-                                }
-                            }
-                        )
-
-                } else {
-                    Rectangle()
-                        .fill(.clear)
-                        .allowsHitTesting(
-                            false
-                        )
-                }
+                    )
             }
         }
         .simultaneousGesture(
@@ -906,17 +1002,8 @@ struct ProfessionalChartView: View {
                 )
             }
         }
-        .chartScrollableAxes(
-            .horizontal
-        )
-        .chartXVisibleDomain(
-            length:
-                Double(
-                    visibleBarCount
-                )
-        )
-        .chartScrollPosition(
-            x: $scrollPosition
+        .chartXScale(
+            domain: xDomain
         )
         .chartXAxis(.hidden)
         .chartYAxis {
@@ -929,10 +1016,84 @@ struct ProfessionalChartView: View {
                 AxisValueLabel()
             }
         }
+        .allowsHitTesting(false)
         .frame(
             height:
                 90 * densityScale
         )
+    }
+
+    private func chartDragGesture(
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> some Gesture {
+        DragGesture(
+            minimumDistance:
+                inspectionMode
+                ? 0
+                : 2
+        )
+        .onChanged { value in
+            guard let anchor =
+                    proxy.plotFrame
+            else {
+                return
+            }
+
+            let plotFrame =
+                geometry[anchor]
+
+            guard plotFrame.width > 0 else {
+                return
+            }
+
+            if inspectionMode {
+                let x =
+                    value.location.x
+                    - plotFrame.origin.x
+
+                if let raw: Double =
+                    proxy.value(
+                        atX: x
+                    ) {
+
+                    selectedIndex =
+                        nearestIndex(
+                            raw
+                        )
+                }
+
+                return
+            }
+
+            if panStartPosition == nil {
+                panStartPosition =
+                    scrollPosition
+            }
+
+            let barsPerPoint =
+                Double(
+                    visibleBarCount
+                )
+                / Double(
+                    plotFrame.width
+                )
+
+            let deltaBars =
+                Double(
+                    value.translation.width
+                )
+                * barsPerPoint
+
+            setScrollPosition(
+                (panStartPosition
+                    ?? scrollPosition)
+                - deltaBars
+            )
+        }
+        .onEnded { _ in
+            panStartPosition = nil
+        }
     }
 
     private func liveBarStrip(
@@ -1059,21 +1220,61 @@ struct ProfessionalChartView: View {
         : .red
     }
 
+    @MainActor
+    private func prepareChartData() async {
+        isPreparingChart = true
+
+        let sourceBars =
+            bars
+
+        let requestedMinutes =
+            interval.rawValue
+
+        let result =
+            await Task.detached(
+                priority: .userInitiated
+            ) {
+                let aggregated =
+                    Self.aggregateBars(
+                        bars: sourceBars,
+                        minutes:
+                            requestedMinutes
+                    )
+
+                return Array(
+                    aggregated.suffix(
+                        20_000
+                    )
+                )
+            }
+            .value
+
+        guard !Task.isCancelled else {
+            return
+        }
+
+        preparedBars =
+            result
+
+        isPreparingChart = false
+        selectedIndex = nil
+        scrollToLatest()
+    }
+
     private func applyRecommendedViewport(
         for newInterval:
             ProfessionalChartInterval
     ) {
-        interval = newInterval
+        interval =
+            newInterval
+
         range =
             newInterval.recommendedRange
 
         zoomLevel = 1
         pinchBaseZoom = 1
         selectedIndex = nil
-
-        DispatchQueue.main.async {
-            scrollToLatest()
-        }
+        panStartPosition = nil
     }
 
     private func setZoom(
@@ -1100,7 +1301,8 @@ struct ProfessionalChartView: View {
 
         let newCount =
             visibleBarCount(
-                for: clampedZoom
+                for:
+                    clampedZoom
             )
 
         zoomLevel =
@@ -1116,7 +1318,27 @@ struct ProfessionalChartView: View {
         scrollPosition = min(
             max(
                 oldCenter
-                - Double(newCount) / 2,
+                    - Double(newCount) / 2,
+                0
+            ),
+            Double(maximumStart)
+        )
+    }
+
+    private func setScrollPosition(
+        _ requested:
+            Double
+    ) {
+        let maximumStart =
+            max(
+                0,
+                chartBars.count
+                    - visibleBarCount
+            )
+
+        scrollPosition = min(
+            max(
+                requested,
                 0
             ),
             Double(maximumStart)
@@ -1124,29 +1346,20 @@ struct ProfessionalChartView: View {
     }
 
     private func scrollToLatest() {
-        let maximumStart = max(
-            0,
-            chartBars.count
-                - visibleBarCount
-        )
+        let maximumStart =
+            max(
+                0,
+                chartBars.count
+                    - visibleBarCount
+            )
 
         scrollPosition =
             Double(maximumStart)
     }
 
     private func clampScrollPosition() {
-        let maximumStart = max(
-            0,
-            chartBars.count
-                - visibleBarCount
-        )
-
-        scrollPosition = min(
-            max(
-                scrollPosition,
-                0
-            ),
-            Double(maximumStart)
+        setScrollPosition(
+            scrollPosition
         )
     }
 
@@ -1185,7 +1398,8 @@ struct ProfessionalChartView: View {
 
         formatter.locale =
             Locale(
-                identifier: "en_US_POSIX"
+                identifier:
+                    "en_US_POSIX"
             )
 
         formatter.timeZone =
@@ -1198,9 +1412,11 @@ struct ProfessionalChartView: View {
         if range == .oneDay {
             formatter.dateFormat =
                 "HH:mm"
+
         } else if range == .fiveDays {
             formatter.dateFormat =
                 "EEE HH:mm"
+
         } else {
             formatter.dateFormat =
                 "MMM d"
@@ -1211,7 +1427,7 @@ struct ProfessionalChartView: View {
         )
     }
 
-    private func aggregate(
+    private static func aggregateBars(
         bars: [MarketBar],
         minutes: Int
     ) -> [MarketBar] {
@@ -1222,24 +1438,27 @@ struct ProfessionalChartView: View {
             }
         }
 
-        let seconds = TimeInterval(
-            minutes * 60
-        )
-
-        let ordered = bars.sorted {
-            $0.timestamp
-                < $1.timestamp
-        }
-
-        let grouped = Dictionary(
-            grouping: ordered
-        ) { bar in
-            floor(
-                bar.timestamp
-                    .timeIntervalSince1970
-                / seconds
+        let seconds =
+            TimeInterval(
+                minutes * 60
             )
-        }
+
+        let ordered =
+            bars.sorted {
+                $0.timestamp
+                    < $1.timestamp
+            }
+
+        let grouped =
+            Dictionary(
+                grouping: ordered
+            ) { bar in
+                floor(
+                    bar.timestamp
+                        .timeIntervalSince1970
+                    / seconds
+                )
+            }
 
         return grouped.keys
             .sorted()
@@ -1267,22 +1486,27 @@ struct ProfessionalChartView: View {
                     }
 
                 return MarketBar(
-                    symbol: first.symbol,
+                    symbol:
+                        first.symbol,
                     timestamp:
                         Date(
                             timeIntervalSince1970:
                                 bucket * seconds
                         ),
-                    open: first.open,
+                    open:
+                        first.open,
                     high:
-                        group.map(\.high)
+                        group
+                            .map(\.high)
                             .max()
                         ?? first.high,
                     low:
-                        group.map(\.low)
+                        group
+                            .map(\.low)
                             .min()
                         ?? first.low,
-                    close: last.close,
+                    close:
+                        last.close,
                     volume:
                         volume.isEmpty
                         ? nil
@@ -1292,13 +1516,15 @@ struct ProfessionalChartView: View {
                         ),
                     timeframe:
                         "\(minutes)min",
-                    source: first.source
+                    source:
+                        first.source
                 )
             }
     }
 
     private func buildPoints(
-        bars: [MarketBar]
+        bars: [MarketBar],
+        indexOffset: Int
     ) -> [ProfessionalChartPoint] {
         guard !bars.isEmpty else {
             return []
@@ -1315,7 +1541,8 @@ struct ProfessionalChartView: View {
 
         var calendar =
             Calendar(
-                identifier: .gregorian
+                identifier:
+                    .gregorian
             )
 
         calendar.timeZone =
@@ -1324,20 +1551,36 @@ struct ProfessionalChartView: View {
         var result:
             [ProfessionalChartPoint] = []
 
+        result.reserveCapacity(
+            bars.count
+        )
+
         var cumulativePV = 0.0
         var cumulativeVolume = 0.0
 
         var currentSession:
             DateComponents?
 
-        for index in bars.indices {
+        var sma20Window:
+            [Double] = []
+
+        var sma50Window:
+            [Double] = []
+
+        var sma20Sum = 0.0
+        var sma50Sum = 0.0
+
+        for localIndex in
+            bars.indices {
+
             let bar =
-                bars[index]
+                bars[localIndex]
 
             let session =
                 calendar.dateComponents(
                     [.year, .month, .day],
-                    from: bar.timestamp
+                    from:
+                        bar.timestamp
                 )
 
             if currentSession
@@ -1369,19 +1612,39 @@ struct ProfessionalChartView: View {
                     volume
             }
 
+            sma20Window.append(
+                bar.close
+            )
+
+            sma20Sum +=
+                bar.close
+
+            if sma20Window.count > 20 {
+                sma20Sum -=
+                    sma20Window.removeFirst()
+            }
+
+            sma50Window.append(
+                bar.close
+            )
+
+            sma50Sum +=
+                bar.close
+
+            if sma50Window.count > 50 {
+                sma50Sum -=
+                    sma50Window.removeFirst()
+            }
+
             let sma20 =
-                rollingAverage(
-                    bars: bars,
-                    endIndex: index,
-                    period: 20
-                )
+                sma20Window.count == 20
+                ? sma20Sum / 20
+                : nil
 
             let sma50 =
-                rollingAverage(
-                    bars: bars,
-                    endIndex: index,
-                    period: 50
-                )
+                sma50Window.count == 50
+                ? sma50Sum / 50
+                : nil
 
             let vwap =
                 cumulativeVolume > 0
@@ -1391,7 +1654,9 @@ struct ProfessionalChartView: View {
 
             result.append(
                 ProfessionalChartPoint(
-                    index: index,
+                    index:
+                        indexOffset
+                        + localIndex,
                     bar: bar,
                     sma20: sma20,
                     sma50: sma50,
@@ -1401,32 +1666,5 @@ struct ProfessionalChartView: View {
         }
 
         return result
-    }
-
-    private func rollingAverage(
-        bars: [MarketBar],
-        endIndex: Int,
-        period: Int
-    ) -> Double? {
-        let start =
-            endIndex - period + 1
-
-        guard start >= 0 else {
-            return nil
-        }
-
-        let values =
-            bars[
-                start...endIndex
-            ]
-            .map {
-                $0.close
-            }
-
-        return values.reduce(
-            0,
-            +
-        )
-        / Double(values.count)
     }
 }
