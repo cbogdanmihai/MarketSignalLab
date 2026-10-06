@@ -822,20 +822,8 @@ final class AppStore: ObservableObject {
 
         isDownloadingHistory = true
 
-        labelCalibration = nil
-        labelCalibrationMessage =
-            "Historical data changed; calibration cache cleared. Any locked policy remains frozen until explicitly changed."
-
-        researchSummaryBySymbol.removeValue(
-            forKey: asset.symbol
-        )
-
-        researchFoldsBySymbol.removeValue(
-            forKey: asset.symbol
-        )
-
-        labelCalibrationBySymbol.removeValue(
-            forKey: asset.symbol
+        invalidateResearchCaches(
+            for: asset
         )
 
         historyCompletedChunks = 0
@@ -1594,6 +1582,14 @@ final class AppStore: ObservableObject {
 
         saveLockedLabelPolicies()
 
+        baselineBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        baselineResult = nil
+        baselineMessage =
+            "Label policy changed; baseline must be retrained."
+
         policyLockMessage =
             "Locked \(recommended.policy.name) for \(asset.symbol). Rebuilding the research dataset with the frozen policy…"
 
@@ -1634,6 +1630,18 @@ final class AppStore: ObservableObject {
         researchFoldsBySymbol.removeValue(
             forKey: asset.symbol
         )
+
+        baselineBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        if baselineResult?.symbol
+            == asset.symbol {
+
+            baselineResult = nil
+            baselineMessage =
+                "Label policy unlocked; baseline invalidated."
+        }
 
         if selectedAsset?.symbol == asset.symbol {
             researchSummary = nil
