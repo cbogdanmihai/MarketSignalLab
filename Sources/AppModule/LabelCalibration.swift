@@ -297,6 +297,15 @@ struct LabelCalibrationCandidateResult: Identifiable, Codable, Sendable {
     }
 }
 
+struct LockedLabelPolicyRecord: Codable, Sendable {
+    let symbol: String
+    let policy: LabelCalibrationPolicy
+    let lockedAt: Date
+    let calibrationScore: Double
+    let calibrationLongTargetRate: Double
+    let calibrationShortTargetRate: Double
+}
+
 struct LabelCalibrationResult: Codable, Sendable {
     let symbol: String
     let calibrationStart: Date
