@@ -100,6 +100,7 @@ struct ResearchDatasetView: View {
 
                     Button {
                         Task {
+                            await store.loadLocalBars()
                             await store.buildResearchDataset()
                         }
                     } label: {
@@ -112,8 +113,15 @@ struct ResearchDatasetView: View {
                         store.isBuildingResearchDataset
                         || store.isDownloadingHistory
                         || store.isValidatingUniverse
-                        || store.storageStats.count < 300
                     )
+
+                    if store.storageStats.count < 300 {
+                        Text(
+                            "Local storage currently reports \(store.storageStats.count) bars. The build button now refreshes storage first; if data is still missing, use Historical Data to download it."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
                 }
 
                 if let summary = store.researchSummary {
@@ -292,7 +300,9 @@ struct ResearchDatasetView: View {
                     }
                 }
             }
-            .task {
+            .task(
+                id: store.selectedAsset?.symbol
+            ) {
                 await store.loadLocalBars()
             }
         }
