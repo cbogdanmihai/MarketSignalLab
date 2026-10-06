@@ -303,8 +303,18 @@ struct ProfessionalChartView: View {
         let padding =
             rawRange * 0.12
 
-        return (low - padding)
-            ...(high + padding)
+        let lower =
+            low - padding
+
+        let upper =
+            high + padding
+
+        return ClosedRange(
+            uncheckedBounds: (
+                lower: lower,
+                upper: upper
+            )
+        )
     }
 
     var body: some View {
