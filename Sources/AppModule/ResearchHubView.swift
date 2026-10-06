@@ -156,6 +156,8 @@ struct ResearchHubView: View {
 
                 calibrationSection
 
+                baselineSection
+
             } else {
                 emptyResearchState
             }
@@ -840,6 +842,327 @@ struct ResearchHubView: View {
                             8
                         )
                     }
+                }
+            }
+        }
+    }
+
+    private var baselineSection: some View {
+        ResearchCard(
+            title: "Phase 2C · Baseline Model",
+            subtitle:
+                "No-skill prevalence vs logistic classifier on untouched walk-forward test sessions"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 12
+            ) {
+                HStack {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 3
+                    ) {
+                        Text(
+                            store.baselineMessage
+                        )
+                        .font(.callout)
+                        .textSelection(.enabled)
+
+                        if store.selectedLockedLabelPolicy
+                            == nil {
+
+                            Label(
+                                "A locked label policy is required.",
+                                systemImage:
+                                    "lock.trianglebadge.exclamationmark"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                .orange
+                            )
+                        }
+                    }
+
+                    Spacer()
+
+                    Button {
+                        Task {
+                            await store
+                                .trainBaselineModel()
+                        }
+                    } label: {
+                        Label(
+                            store.isTrainingBaseline
+                            ? "Training…"
+                            : "Train Baseline",
+                            systemImage:
+                                "brain"
+                        )
+                    }
+                    .buttonStyle(
+                        .borderedProminent
+                    )
+                    .disabled(
+                        store.isTrainingBaseline
+                        || store
+                            .selectedLockedLabelPolicy
+                            == nil
+                    )
+                }
+
+                if store.isTrainingBaseline {
+                    ProgressView()
+                }
+
+                if let result =
+                    store.baselineResult {
+
+                    HStack(spacing: 12) {
+                        MetricTile(
+                            title:
+                                "LONG Brier skill",
+                            value:
+                                percent(
+                                    result
+                                        .meanLongSkill
+                                ),
+                            subtitle:
+                                result.meanLongSkill
+                                    > 0
+                                ? "Beats no-skill"
+                                : "Below no-skill"
+                        )
+
+                        MetricTile(
+                            title:
+                                "SHORT Brier skill",
+                            value:
+                                percent(
+                                    result
+                                        .meanShortSkill
+                                ),
+                            subtitle:
+                                result.meanShortSkill
+                                    > 0
+                                ? "Beats no-skill"
+                                : "Below no-skill"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Initial gate",
+                            value:
+                                result
+                                    .passesInitialGate
+                                ? "PASS"
+                                : "REVIEW",
+                            subtitle:
+                                "Positive skill both sides"
+                        )
+                    }
+
+                    DisclosureGroup(
+                        "Walk-forward test folds"
+                    ) {
+                        VStack(spacing: 8) {
+                            ForEach(
+                                result.folds
+                            ) { fold in
+                                HStack(
+                                    spacing: 10
+                                ) {
+                                    Text(
+                                        "Fold \(fold.fold)"
+                                    )
+                                    .frame(
+                                        width: 55,
+                                        alignment:
+                                            .leading
+                                    )
+
+                                    Text(
+                                        fold
+                                            .direction
+                                            .rawValue
+                                    )
+                                    .font(
+                                        .caption.bold()
+                                    )
+                                    .frame(
+                                        width: 55,
+                                        alignment:
+                                            .leading
+                                    )
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Skill"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            percent(
+                                                fold
+                                                    .brierSkill
+                                            )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Brier"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            fold
+                                                .logisticTest
+                                                .brierScore,
+                                            format:
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        4
+                                                    )
+                                                )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "No-skill"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            fold
+                                                .noSkillTestBrier,
+                                            format:
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        4
+                                                    )
+                                                )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Precision"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            fold
+                                                .logisticTest
+                                                .precision,
+                                            format:
+                                                .percent.precision(
+                                                    .fractionLength(
+                                                        1
+                                                    )
+                                                )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Recall"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            fold
+                                                .logisticTest
+                                                .recall,
+                                            format:
+                                                .percent.precision(
+                                                    .fractionLength(
+                                                        1
+                                                    )
+                                                )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    Spacer()
+
+                                    Text(
+                                        fold
+                                            .beatsNoSkill
+                                        ? "PASS"
+                                        : "MISS"
+                                    )
+                                    .font(
+                                        .caption.bold()
+                                    )
+                                    .foregroundStyle(
+                                        fold
+                                            .beatsNoSkill
+                                        ? Color.green
+                                        : Color.orange
+                                    )
+                                }
+                                .font(.caption)
+                                .padding(
+                                    .vertical,
+                                    4
+                                )
+
+                                Divider()
+                            }
+                        }
+                        .padding(
+                            .top,
+                            8
+                        )
+                    }
+
+                    Text(
+                        "Thresholds are selected only on each validation block. Test blocks remain untouched until final scoring."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
                 }
             }
         }
