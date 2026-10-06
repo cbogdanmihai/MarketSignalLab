@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.3.4"
-    private let fallbackBuild = "14"
-    private let releaseName = "Phase 2B.4 — Session-Safe Validation"
+    private let fallbackVersion = "0.3.5"
+    private let fallbackBuild = "15"
+    private let releaseName = "Phase 2B.5 — Label Calibration"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -170,6 +170,21 @@ struct AppInfoView: View {
                         value: String(
                             store.researchFolds.count
                         )
+                    )
+
+                    LabeledContent(
+                        "Label calibration",
+                        value:
+                            store.labelCalibration?.recommended?.policy.name
+                            ?? "Not run"
+                    )
+
+                    LabeledContent(
+                        "Calibration accepted",
+                        value:
+                            store.labelCalibration?.recommended?.meetsAcceptanceBand == true
+                            ? "Yes"
+                            : "No"
                     )
                 }
 
