@@ -1,110 +1,88 @@
-# MarketSignalLab 0.3.0 — Phase 2B Research Dataset
+# MarketSignalLab 0.3.5 — Phase 2B.5 Label Calibration
 
 Native iPad Swift Playgrounds research app for market-data ingestion and signal research.
 
-## Phase 1 complete
+## Completed foundation
 
-- Twelve Data provider integration.
-- Shared rate limiter for the Basic API quota.
-- 16 / 16 configured symbols validated.
-- Recent 1-minute bar fetch and local persistence.
-- Diagnostics JSON for ChatGPT collaboration.
-- App Info page with version/build/runtime details.
+- Twelve Data ingestion with shared Basic-plan pacing.
+- 16 configured tradeable/context symbols validated.
+- Partitioned local 1-minute historical store with deduplication.
+- Session-normalized causal feature pipeline.
+- Target-before-stop labels with explicit ambiguous-candle handling.
+- Session-safe chronological walk-forward folds.
+- Diagnostics JSON and App Info collaboration/runtime pages.
 
-## Phase 2A complete
+## Phase 2B.5 — Label calibration
 
-- Historical 1-minute downloader with date-range requests.
-- Three-day request chunks.
-- Empty market windows are skipped instead of aborting an import.
-- Partitioned local historical store.
-- Monthly JSON partitions with deduplication.
-- Existing Phase 1 data migrates automatically.
-- Local coverage stats: count, earliest timestamp and latest timestamp.
+The **Research Dataset** page now includes a **Calibrate Label Policies** step before model training.
 
-## Phase 2B
+The calibration engine compares ten candidate label policies:
 
-The new **Research Dataset** page builds a causal intraday dataset entirely on the iPad.
+Fixed percentage candidates:
 
-### Session normalization
+- 0.45% target / 0.25% stop
+- 0.55% / 0.30%
+- 0.65% / 0.35%
+- 0.75% / 0.35% baseline
+- 0.85% / 0.40%
 
-For equities and ETFs, research rows use the regular US session:
+ATR-adaptive candidates:
 
-`09:30–16:00 America/New_York`
+- 4.0× ATR target / 2.0× ATR stop
+- 5.0× / 2.5×
+- 6.0× / 3.0×
+- 7.0× / 3.5×
+- 8.0× / 4.0×
 
-Crypto uses UTC 24/7 calendar days.
+All candidates currently use a 90-minute horizon.
 
-Rows never mix rolling features across separate equity sessions.
+### Leakage rule
 
-### Feature set
+Label-policy ranking uses only the earliest walk-forward **train + validation** window.
 
-Current numeric predictors:
+No session that belongs to any walk-forward test block is used to rank the policies.
 
-- minute of session
-- normalized session progress
-- returns: 1m, 5m, 15m, 30m, 60m
-- candle range / close
-- ATR(14) / close
-- realized volatility over 20 one-minute returns
-- volume z-score over 20 bars
-- distance to SMA20
-- distance to SMA50
-- distance to running session high
-- distance to running session low
-- distance to causal session VWAP
+This makes label calibration a pre-test model-design step rather than an optimization against future test outcomes.
 
-Every feature is causal: it uses only the current bar and prior bars.
+### Acceptance band
 
-### Labels
+A candidate is accepted when:
 
-Default Phase 2B target/stop labels:
+- LONG target-event rate is 8–20%
+- SHORT target-event rate is 8–20%
+- ambiguous-bar rate is at most 1%
 
-- target: +0.75%
-- stop: -0.35%
-- horizon: 90 minutes
+Ranking additionally considers:
 
-Both LONG and SHORT outcomes are computed independently.
+- LONG/SHORT target balance
+- session-to-session target-rate stability
+- ambiguity
+- closeness to the target-event acceptance band
 
-Outcomes:
+The UI also reports a **payoff proxy**. This is a label-quality diagnostic, not a strategy backtest:
 
-- `target`
-- `stop`
-- `timeout`
-- `ambiguous`
+- target → +target threshold
+- stop → -stop threshold
+- timeout → horizon return
+- ambiguous → zero
 
-If target and stop are both touched in the same 1-minute candle, the row is marked `ambiguous` rather than inventing an intrabar path.
+### Next decision
 
-The dataset also records:
+Run calibration on QQQ after the 60-day historical import.
 
-- future return at the horizon
-- MFE across the full horizon
-- MAE across the full horizon
+If a policy passes the acceptance band, the next change will lock that policy and rebuild the complete dataset before Phase 2C.
 
-### Walk-forward validation
-
-With enough rows, the app creates three expanding chronological folds.
-
-Each fold contains:
-
-- train
-- validation
-- test
-
-A 90-minute purge is applied before validation/test boundaries to reduce target leakage from overlapping label horizons.
-
-There are no random train/test splits.
+If none passes, expand/refine the candidate grid rather than training a classifier on a sparse target definition.
 
 ## Current test workflow
 
 1. Pull latest `main`.
-2. Confirm **App Info → Version 0.3.0 / Build 10**.
-3. Select **QQQ**.
+2. Confirm **App Info → Version 0.3.5 / Build 15**.
+3. Select QQQ.
 4. Open **Research Dataset**.
-5. Tap **Build Research Dataset**.
-6. Review row count, target rates and walk-forward folds.
-7. Prepare and share Diagnostics.
-
-## Next
-
-Phase 2C trains the first calibrated local baseline model and evaluates it strictly on the walk-forward folds before any prediction is exposed as a trading signal.
+5. Build Research Dataset if needed.
+6. Tap **Calibrate Label Policies**.
+7. Review the recommendation and candidate ranking.
+8. Prepare and share Diagnostics.
 
 The project remains signal/research only. No broker execution is implemented.
