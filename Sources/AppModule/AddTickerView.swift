@@ -1,11 +1,19 @@
 import SwiftUI
 
 struct AddTickerView: View {
+    private enum Field {
+        case symbol
+        case displayName
+    }
+
     @Environment(\.dismiss)
     private var dismiss
 
     @EnvironmentObject
     private var store: AppStore
+
+    @FocusState
+    private var focusedField: Field?
 
     @State
     private var symbol = ""
@@ -18,77 +26,183 @@ struct AddTickerView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Add symbol") {
-                    TextField(
-                        "Ticker or provider symbol",
-                        text: $symbol
-                    )
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-
-                    TextField(
-                        "Display name (optional)",
-                        text: $displayName
-                    )
-
-                    Picker(
-                        "Asset type",
-                        selection: $assetClass
+            ScrollView {
+                VStack(
+                    alignment: .leading,
+                    spacing: 18
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 10
                     ) {
-                        Text("Equity")
-                            .tag(AssetClass.equity)
+                        Text("Add symbol")
+                            .font(.headline)
 
-                        Text("ETF")
-                            .tag(AssetClass.etf)
-
-                        Text("Crypto")
-                            .tag(AssetClass.crypto)
-
-                        Text("Index")
-                            .tag(AssetClass.index)
-
-                        Text("Commodity proxy")
-                            .tag(AssetClass.commodityProxy)
-                    }
-                }
-
-                Section("Provider") {
-                    Text(
-                        "New symbols are checked against Twelve Data when an API key is available. Custom symbols are stored locally on this iPad and merged with the built-in universe."
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                    if store.isAddingCustomAsset {
-                        ProgressView(
-                            "Checking symbol…"
+                        TextField(
+                            "Ticker or provider symbol",
+                            text: $symbol
                         )
-                    }
+                        .textFieldStyle(
+                            .roundedBorder
+                        )
+                        .textInputAutocapitalization(
+                            .characters
+                        )
+                        .autocorrectionDisabled()
+                        .keyboardType(
+                            .asciiCapable
+                        )
+                        .submitLabel(.next)
+                        .focused(
+                            $focusedField,
+                            equals: .symbol
+                        )
+                        .onSubmit {
+                            focusedField =
+                                .displayName
+                        }
 
-                    if !store.customAssetMessage.isEmpty {
-                        Text(store.customAssetMessage)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                }
+                        TextField(
+                            "Display name (optional)",
+                            text: $displayName
+                        )
+                        .textFieldStyle(
+                            .roundedBorder
+                        )
+                        .submitLabel(.done)
+                        .focused(
+                            $focusedField,
+                            equals:
+                                .displayName
+                        )
+                        .onSubmit {
+                            focusedField = nil
+                        }
 
-                Section {
-                    Button {
-                        Task {
-                            await store.addCustomAsset(
-                                symbol: symbol,
-                                displayName: displayName,
-                                assetClass: assetClass
+                        Picker(
+                            "Asset type",
+                            selection:
+                                $assetClass
+                        ) {
+                            Text("Equity")
+                                .tag(
+                                    AssetClass.equity
+                                )
+
+                            Text("ETF")
+                                .tag(
+                                    AssetClass.etf
+                                )
+
+                            Text("Crypto")
+                                .tag(
+                                    AssetClass.crypto
+                                )
+
+                            Text("Index")
+                                .tag(
+                                    AssetClass.index
+                                )
+
+                            Text(
+                                "Commodity proxy"
                             )
+                            .tag(
+                                AssetClass
+                                    .commodityProxy
+                            )
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    .padding(16)
+                    .background(
+                        Color(
+                            uiColor:
+                                .secondarySystemBackground
+                        ),
+                        in:
+                            RoundedRectangle(
+                                cornerRadius: 12
+                            )
+                    )
 
-                            if store.selectedAsset?.symbol
-                                == symbol
+                    VStack(
+                        alignment: .leading,
+                        spacing: 10
+                    ) {
+                        Text("Provider")
+                            .font(.headline)
+
+                        Text(
+                            "New symbols are checked against Twelve Data when an API key is available. Custom symbols are stored locally on this iPad and merged with the built-in universe."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                        if store
+                            .isAddingCustomAsset {
+
+                            ProgressView(
+                                "Checking symbol…"
+                            )
+                        }
+
+                        if !store
+                            .customAssetMessage
+                            .isEmpty {
+
+                            Text(
+                                store
+                                    .customAssetMessage
+                            )
+                            .font(.callout)
+                            .foregroundStyle(
+                                .secondary
+                            )
+                            .textSelection(
+                                .enabled
+                            )
+                        }
+                    }
+                    .padding(16)
+                    .background(
+                        Color(
+                            uiColor:
+                                .secondarySystemBackground
+                        ),
+                        in:
+                            RoundedRectangle(
+                                cornerRadius: 12
+                            )
+                    )
+
+                    Button {
+                        focusedField = nil
+
+                        Task {
+                            await store
+                                .addCustomAsset(
+                                    symbol: symbol,
+                                    displayName:
+                                        displayName,
+                                    assetClass:
+                                        assetClass
+                                )
+
+                            let normalized =
+                                symbol
                                     .trimmingCharacters(
-                                        in: .whitespacesAndNewlines
+                                        in:
+                                            .whitespacesAndNewlines
                                     )
-                                    .uppercased() {
+                                    .uppercased()
+
+                            if store
+                                .selectedAsset?
+                                .symbol
+                                == normalized {
 
                                 dismiss()
                             }
@@ -96,26 +210,60 @@ struct AddTickerView: View {
                     } label: {
                         Label(
                             "Add to Watchlist",
-                            systemImage: "plus.circle.fill"
+                            systemImage:
+                                "plus.circle.fill"
+                        )
+                        .frame(
+                            maxWidth:
+                                .infinity
                         )
                     }
+                    .buttonStyle(
+                        .borderedProminent
+                    )
                     .disabled(
-                        symbol.trimmingCharacters(
-                            in: .whitespacesAndNewlines
-                        ).isEmpty
-                        || store.isAddingCustomAsset
+                        symbol
+                            .trimmingCharacters(
+                                in:
+                                    .whitespacesAndNewlines
+                            )
+                            .isEmpty
+                        || store
+                            .isAddingCustomAsset
                     )
                 }
+                .padding(20)
             }
             .navigationTitle("Add Ticker")
             .toolbar {
                 ToolbarItem(
-                    placement: .cancellationAction
+                    placement:
+                        .cancellationAction
                 ) {
                     Button("Close") {
                         dismiss()
                     }
                 }
+
+                ToolbarItemGroup(
+                    placement: .keyboard
+                ) {
+                    Spacer()
+
+                    Button("Done") {
+                        focusedField = nil
+                    }
+                }
+            }
+            .onAppear {
+                DispatchQueue.main
+                    .asyncAfter(
+                        deadline:
+                            .now() + 0.2
+                    ) {
+                        focusedField =
+                            .symbol
+                    }
             }
         }
     }
