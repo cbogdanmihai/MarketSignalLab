@@ -100,3 +100,12 @@ Additional behavior:
 - full current local history is retained up to a 20,000 aggregated-bar safety cap.
 
 Crosshair remains an explicit inspection mode so it does not steal the normal scroll gesture.
+
+
+## Compiler guard
+
+The repository now includes a macOS GitHub Actions iOS type-check workflow for every Swift source under `Sources/AppModule`.
+
+This was introduced after the dynamic-chart refactor so compiler errors are caught across the whole module instead of being discovered one at a time in Swift Playgrounds.
+
+A full iOS Simulator SDK type-check was run successfully after the Chart 3.3 fixes.
