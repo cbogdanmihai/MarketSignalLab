@@ -77,6 +77,16 @@ final class AppStore: ObservableObject {
     var labelCalibrationBySymbol: [String: LabelCalibrationResult] = [:]
 
     @Published private(set)
+    var lockedLabelPolicies: [String: LockedLabelPolicyRecord] = [:]
+
+    @Published private(set)
+    var isLockingLabelPolicy = false
+
+    @Published private(set)
+    var policyLockMessage =
+        "No label policy locked for the selected symbol."
+
+    @Published private(set)
     var isAddingCustomAsset = false
 
     @Published private(set)
@@ -108,6 +118,9 @@ final class AppStore: ObservableObject {
     private let customAssetsDefaultsKey =
         "MarketSignalLab.CustomAssets.v1"
 
+    private let lockedLabelPoliciesDefaultsKey =
+        "MarketSignalLab.LockedLabelPolicies.v1"
+
     private var diagnosticEvents: [DiagnosticEvent] = []
 
     init(
@@ -116,6 +129,7 @@ final class AppStore: ObservableObject {
         self.repository = repository
 
         loadValidationCache()
+        loadLockedLabelPolicies()
 
         do {
             let builtIn = try UniverseLoader.load()
@@ -176,6 +190,26 @@ final class AppStore: ObservableObject {
         )
         .contains(
             asset.symbol.uppercased()
+        )
+    }
+
+    func lockedLabelPolicy(
+        for asset: AssetConfig
+    ) -> LockedLabelPolicyRecord? {
+        lockedLabelPolicies[
+            asset.symbol
+        ]
+    }
+
+    var selectedLockedLabelPolicy:
+        LockedLabelPolicyRecord? {
+
+        guard let asset = selectedAsset else {
+            return nil
+        }
+
+        return lockedLabelPolicy(
+            for: asset
         )
     }
 
@@ -329,6 +363,12 @@ final class AppStore: ObservableObject {
         labelCalibrationBySymbol.removeValue(
             forKey: asset.symbol
         )
+
+        lockedLabelPolicies.removeValue(
+            forKey: asset.symbol
+        )
+
+        saveLockedLabelPolicies()
 
         if selectedAsset?.symbol == asset.symbol {
             selectedAsset =
@@ -534,6 +574,11 @@ final class AppStore: ObservableObject {
                 labelCalibration == nil
                 ? "Label policies not calibrated yet."
                 : "Loaded cached label calibration for \(asset.symbol)."
+
+            policyLockMessage =
+                lockedLabelPolicies[asset.symbol] == nil
+                ? "No label policy locked for \(asset.symbol)."
+                : "Loaded locked label policy for \(asset.symbol)."
         }
 
         do {
@@ -721,7 +766,7 @@ final class AppStore: ObservableObject {
 
         labelCalibration = nil
         labelCalibrationMessage =
-            "Historical data changed; recalibrate label policies after rebuilding the research dataset."
+            "Historical data changed; calibration cache cleared. Any locked policy remains frozen until explicitly changed."
 
         researchSummaryBySymbol.removeValue(
             forKey: asset.symbol
@@ -886,13 +931,11 @@ final class AppStore: ObservableObject {
         }
 
         isBuildingResearchDataset = true
-        labelCalibration = nil
-        labelCalibrationBySymbol.removeValue(
-            forKey: asset.symbol
-        )
 
-        labelCalibrationMessage =
-            "Label policies not calibrated yet."
+        let lockedPolicy =
+            lockedLabelPolicies[
+                asset.symbol
+            ]?.policy
 
         researchMessage =
             "Building features, labels and purged walk-forward folds for \(asset.symbol)…"
@@ -937,7 +980,8 @@ final class AppStore: ObservableObject {
             ) {
                 ResearchDatasetBuilder.build(
                     asset: asset,
-                    bars: localBars
+                    bars: localBars,
+                    labelPolicy: lockedPolicy
                 )
             }.value
 
@@ -951,8 +995,13 @@ final class AppStore: ObservableObject {
             researchFoldsBySymbol[asset.symbol] =
                 result.folds
 
+            let policyText =
+                result.summary.usesLockedPolicy
+                ? "locked policy \(result.summary.labelPolicyName)"
+                : "baseline label policy"
+
             researchMessage =
-                "Research dataset ready: \(result.summary.rowCount) labeled rows, \(result.summary.featureCount) features, \(result.folds.count) purged walk-forward folds."
+                "Research dataset ready: \(result.summary.rowCount) labeled rows, \(result.summary.featureCount) features, \(result.folds.count) purged walk-forward folds using \(policyText)."
 
             log(
                 "info",
@@ -1027,7 +1076,11 @@ final class AppStore: ObservableObject {
                 ) {
                     ResearchDatasetBuilder.build(
                         asset: asset,
-                        bars: localBars
+                        bars: localBars,
+                        labelPolicy:
+                            lockedLabelPolicies[
+                                asset.symbol
+                            ]?.policy
                     )
                 }.value
 
@@ -1106,6 +1159,111 @@ final class AppStore: ObservableObject {
                 labelCalibrationMessage
             )
         }
+    }
+
+    func lockRecommendedLabelPolicy() async {
+        guard let asset = selectedAsset else {
+            return
+        }
+
+        guard !isLockingLabelPolicy else {
+            return
+        }
+
+        guard
+            let calibration = labelCalibration,
+            let recommended =
+                calibration.recommended,
+            recommended.meetsAcceptanceBand
+        else {
+            policyLockMessage =
+                "An accepted calibration is required before locking a label policy."
+
+            log(
+                "warning",
+                policyLockMessage
+            )
+
+            return
+        }
+
+        isLockingLabelPolicy = true
+
+        defer {
+            isLockingLabelPolicy = false
+        }
+
+        let record = LockedLabelPolicyRecord(
+            symbol: asset.symbol,
+            policy: recommended.policy,
+            lockedAt: Date(),
+            calibrationScore:
+                recommended.score,
+            calibrationLongTargetRate:
+                recommended.longTargetRate,
+            calibrationShortTargetRate:
+                recommended.shortTargetRate
+        )
+
+        lockedLabelPolicies[
+            asset.symbol
+        ] = record
+
+        saveLockedLabelPolicies()
+
+        policyLockMessage =
+            "Locked \(recommended.policy.name) for \(asset.symbol). Rebuilding the research dataset with the frozen policy…"
+
+        log(
+            "info",
+            policyLockMessage
+        )
+
+        await buildResearchDataset()
+
+        if researchSummary?.usesLockedPolicy == true,
+           researchSummary?.labelPolicyID
+                == recommended.policy.id {
+
+            policyLockMessage =
+                "Policy locked and dataset rebuilt for \(asset.symbol): \(recommended.policy.name)."
+
+            log(
+                "info",
+                policyLockMessage
+            )
+        }
+    }
+
+    func unlockLabelPolicy(
+        for asset: AssetConfig
+    ) {
+        lockedLabelPolicies.removeValue(
+            forKey: asset.symbol
+        )
+
+        saveLockedLabelPolicies()
+
+        researchSummaryBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        researchFoldsBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
+        if selectedAsset?.symbol == asset.symbol {
+            researchSummary = nil
+            researchFolds = []
+            researchRows = []
+            policyLockMessage =
+                "Unlocked label policy for \(asset.symbol). Rebuild the dataset to return to baseline labels."
+        }
+
+        log(
+            "warning",
+            "Unlocked label policy for \(asset.symbol)."
+        )
     }
 
     private func percentText(
@@ -1336,6 +1494,56 @@ final class AppStore: ObservableObject {
             data,
             forKey: customAssetsDefaultsKey
         )
+    }
+
+    private func saveLockedLabelPolicies() {
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy =
+                .iso8601
+
+            let data = try encoder.encode(
+                lockedLabelPolicies
+            )
+
+            UserDefaults.standard.set(
+                data,
+                forKey:
+                    lockedLabelPoliciesDefaultsKey
+            )
+
+        } catch {
+            print(
+                "Could not save locked label policies:",
+                error.localizedDescription
+            )
+        }
+    }
+
+    private func loadLockedLabelPolicies() {
+        guard
+            let data = UserDefaults.standard.data(
+                forKey:
+                    lockedLabelPoliciesDefaultsKey
+            )
+        else {
+            return
+        }
+
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy =
+                .iso8601
+
+            lockedLabelPolicies =
+                try decoder.decode(
+                    [String: LockedLabelPolicyRecord].self,
+                    from: data
+                )
+
+        } catch {
+            lockedLabelPolicies = [:]
+        }
     }
 
     private func saveValidationCache() {
