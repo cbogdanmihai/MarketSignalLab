@@ -4,12 +4,28 @@ struct BarStorageStats: Equatable, Sendable {
     let count: Int
     let earliest: Date?
     let latest: Date?
+    let latestClose: Double?
+    let previousClose: Double?
 
     static let empty = BarStorageStats(
         count: 0,
         earliest: nil,
-        latest: nil
+        latest: nil,
+        latestClose: nil,
+        previousClose: nil
     )
+
+    var latestChangePct: Double? {
+        guard
+            let latestClose,
+            let previousClose,
+            previousClose != 0
+        else {
+            return nil
+        }
+
+        return latestClose / previousClose - 1
+    }
 }
 
 protocol BarRepository: Sendable {
@@ -158,7 +174,12 @@ actor PartitionedJSONBarRepository: BarRepository {
         return BarStorageStats(
             count: bars.count,
             earliest: bars.first?.timestamp,
-            latest: bars.last?.timestamp
+            latest: bars.last?.timestamp,
+            latestClose: bars.last?.close,
+            previousClose:
+                bars.count >= 2
+                ? bars[bars.count - 2].close
+                : nil
         )
     }
 
