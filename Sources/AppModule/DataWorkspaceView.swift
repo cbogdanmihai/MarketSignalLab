@@ -258,6 +258,9 @@ struct DataWorkspaceView: View {
 }
 
 private struct DataMetric: View {
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     let title: String
     let value: String
     let detail: String
@@ -281,10 +284,13 @@ private struct DataMetric: View {
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: 90,
+            minHeight:
+                90 * densityScale,
             alignment: .leading
         )
-        .padding(12)
+        .padding(
+            12 * densityScale
+        )
         .background(
             Color(
                 uiColor:
