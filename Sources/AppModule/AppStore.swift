@@ -881,6 +881,10 @@ final class AppStore: ObservableObject {
 
         isBuildingResearchDataset = true
         labelCalibration = nil
+        labelCalibrationBySymbol.removeValue(
+            forKey: asset.symbol
+        )
+
         labelCalibrationMessage =
             "Label policies not calibrated yet."
 
