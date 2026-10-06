@@ -113,6 +113,19 @@ final class AppStore: ObservableObject {
     var customAssetMessage = ""
 
     @Published private(set)
+    var baselineResult: BaselineRunResult?
+
+    @Published private(set)
+    var baselineBySymbol: [String: BaselineRunResult] = [:]
+
+    @Published private(set)
+    var isTrainingBaseline = false
+
+    @Published private(set)
+    var baselineMessage =
+        "Baseline model not trained yet."
+
+    @Published private(set)
     var isBuildingAllResearch = false
 
     @Published private(set)
@@ -608,6 +621,16 @@ final class AppStore: ObservableObject {
                 lockedLabelPolicies[asset.symbol] == nil
                 ? "No label policy locked for \(asset.symbol)."
                 : "Loaded locked label policy for \(asset.symbol)."
+
+            baselineResult =
+                baselineBySymbol[
+                    asset.symbol
+                ]
+
+            baselineMessage =
+                baselineResult == nil
+                ? "Baseline model not trained yet."
+                : "Loaded cached baseline result for \(asset.symbol)."
         }
 
         do {
@@ -1230,6 +1253,20 @@ final class AppStore: ObservableObject {
                     asset.symbol
             )
 
+        baselineBySymbol
+            .removeValue(
+                forKey:
+                    asset.symbol
+            )
+
+        if baselineResult?.symbol
+            == asset.symbol {
+
+            baselineResult = nil
+            baselineMessage =
+                "Historical data changed; baseline must be retrained."
+        }
+
         if selectedAsset?.symbol
             == asset.symbol {
 
@@ -1696,6 +1733,139 @@ final class AppStore: ObservableObject {
         log(
             "info",
             allResearchMessage
+        )
+    }
+
+    func trainBaselineModel() async {
+        guard let asset = selectedAsset else {
+            return
+        }
+
+        guard !isTrainingBaseline else {
+            return
+        }
+
+        guard
+            let locked =
+                lockedLabelPolicies[
+                    asset.symbol
+                ]
+        else {
+            baselineMessage =
+                "Lock an accepted label policy before baseline training."
+
+            log(
+                "warning",
+                baselineMessage
+            )
+
+            return
+        }
+
+        if researchRows.isEmpty
+            || researchSummary?.symbol
+                != asset.symbol
+            || researchSummary?
+                .usesLockedPolicy
+                != true {
+
+            baselineMessage =
+                "Rebuilding the locked-policy dataset before baseline training…"
+
+            await buildResearchDataset()
+        }
+
+        guard
+            !researchRows.isEmpty,
+            researchFolds.count >= 3,
+            researchSummary?
+                .usesLockedPolicy
+                == true
+        else {
+            baselineMessage =
+                "Baseline training requires a locked-policy dataset with three walk-forward folds."
+
+            log(
+                "warning",
+                baselineMessage
+            )
+
+            return
+        }
+
+        isTrainingBaseline = true
+
+        baselineMessage =
+            "Training no-skill and logistic walk-forward baselines for \(asset.symbol)…"
+
+        log(
+            "info",
+            baselineMessage
+        )
+
+        let rows =
+            researchRows
+
+        let folds =
+            researchFolds
+
+        defer {
+            isTrainingBaseline = false
+        }
+
+        let result =
+            await Task.detached(
+                priority:
+                    .userInitiated
+            ) {
+                BaselineModelEngine.run(
+                    symbol:
+                        asset.symbol,
+                    lockedPolicy:
+                        locked,
+                    rows: rows,
+                    folds: folds
+                )
+            }
+            .value
+
+        baselineResult =
+            result
+
+        baselineBySymbol[
+            asset.symbol
+        ] = result
+
+        let longSkill =
+            Int(
+                round(
+                    result.meanLongSkill
+                    * 100
+                )
+            )
+
+        let shortSkill =
+            Int(
+                round(
+                    result.meanShortSkill
+                    * 100
+                )
+            )
+
+        if result.passesInitialGate {
+            baselineMessage =
+                "Baseline complete: positive Brier skill on LONG (\(longSkill)%) and SHORT (\(shortSkill)%) across the walk-forward tests."
+
+        } else {
+            baselineMessage =
+                "Baseline complete: initial gate not passed. Mean Brier skill LONG \(longSkill)%, SHORT \(shortSkill)%."
+        }
+
+        log(
+            result.passesInitialGate
+            ? "info"
+            : "warning",
+            baselineMessage
         )
     }
 
