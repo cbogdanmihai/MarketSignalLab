@@ -644,78 +644,87 @@ enum ResearchDatasetBuilder {
         rows: [ResearchRow],
         horizonMinutes: Int
     ) -> [WalkForwardFold] {
-        guard rows.count >= 600 else {
-            return []
-        }
-
         let ordered = rows.sorted {
             $0.timestamp < $1.timestamp
         }
 
-        let blockSize =
-            max(1, ordered.count / 6)
+        let grouped = Dictionary(
+            grouping: ordered,
+            by: { $0.sessionKey }
+        )
+
+        let sessionKeys = grouped.keys.sorted {
+            let lhs = grouped[$0]?.first?.timestamp
+                ?? .distantPast
+
+            let rhs = grouped[$1]?.first?.timestamp
+                ?? .distantPast
+
+            return lhs < rhs
+        }
+
+        // Three expanding folds require enough independent sessions.
+        // We intentionally split only at session boundaries so a single
+        // trading day never appears in both train and validation/test.
+        guard sessionKeys.count >= 18 else {
+            return []
+        }
+
+        let blockSize = max(
+            3,
+            sessionKeys.count / 6
+        )
 
         var folds: [WalkForwardFold] = []
 
         for fold in 1...3 {
-            let trainBoundaryIndex = min(
-                blockSize * (fold + 1) - 1,
-                ordered.count - 1
-            )
+            let trainEndExclusive =
+                blockSize * (fold + 1)
 
-            let validationBoundaryIndex = min(
-                trainBoundaryIndex + blockSize,
-                ordered.count - 1
-            )
+            let validationEndExclusive =
+                trainEndExclusive + blockSize
 
-            let testBoundaryIndex = min(
-                validationBoundaryIndex + blockSize,
-                ordered.count - 1
-            )
+            let testEndExclusive =
+                validationEndExclusive + blockSize
 
-            guard trainBoundaryIndex > 0,
-                  validationBoundaryIndex > trainBoundaryIndex,
-                  testBoundaryIndex > validationBoundaryIndex
-            else {
+            guard testEndExclusive <= sessionKeys.count else {
                 continue
             }
 
-            let trainBoundary =
-                ordered[trainBoundaryIndex].timestamp
+            let trainKeys = Set(
+                sessionKeys[
+                    0..<trainEndExclusive
+                ]
+            )
 
-            let validationBoundary =
-                ordered[validationBoundaryIndex].timestamp
+            let validationKeys = Set(
+                sessionKeys[
+                    trainEndExclusive..<validationEndExclusive
+                ]
+            )
 
-            let testBoundary =
-                ordered[testBoundaryIndex].timestamp
-
-            let purgeSeconds =
-                TimeInterval(
-                    horizonMinutes * 60
-                )
-
-            let trainSafeEnd =
-                trainBoundary.addingTimeInterval(
-                    -purgeSeconds
-                )
-
-            let validationSafeEnd =
-                validationBoundary.addingTimeInterval(
-                    -purgeSeconds
-                )
+            let testKeys = Set(
+                sessionKeys[
+                    validationEndExclusive..<testEndExclusive
+                ]
+            )
 
             let trainRows = ordered.filter {
-                $0.timestamp <= trainSafeEnd
+                trainKeys.contains(
+                    $0.sessionKey
+                )
             }
 
             let validationRows = ordered.filter {
-                $0.timestamp > trainBoundary
-                && $0.timestamp <= validationSafeEnd
+                validationKeys.contains(
+                    $0.sessionKey
+                )
             }
 
             let testRows = ordered.filter {
-                $0.timestamp > validationBoundary
-                && $0.timestamp <= testBoundary
+                testKeys.contains(
+                    $0.sessionKey
+                )
             }
 
             guard
@@ -730,9 +739,7 @@ enum ResearchDatasetBuilder {
                 let testStart =
                     testRows.first?.timestamp,
                 let testEnd =
-                    testRows.last?.timestamp,
-                !validationRows.isEmpty,
-                !testRows.isEmpty
+                    testRows.last?.timestamp
             else {
                 continue
             }
