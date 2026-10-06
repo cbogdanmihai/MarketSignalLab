@@ -412,6 +412,9 @@ struct MarketWorkspaceView: View {
 }
 
 private struct WorkspaceStat: View {
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     let title: String
     let value: String
 
@@ -430,11 +433,11 @@ private struct WorkspaceStat: View {
         }
         .padding(
             .horizontal,
-            10
+            10 * densityScale
         )
         .padding(
             .vertical,
-            7
+            7 * densityScale
         )
         .background(
             Color(
