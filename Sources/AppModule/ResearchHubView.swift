@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import Foundation
 
 private enum ResearchHubScope: String, CaseIterable, Identifiable {
     case symbol = "Symbol"
@@ -1006,7 +1007,7 @@ struct ResearchHubView: View {
 private struct ResearchCard<Content: View>: View {
     let title: String
     let subtitle: String
-    @ViewBuilder let content: Content
+    let content: Content
 
     init(
         title: String,
