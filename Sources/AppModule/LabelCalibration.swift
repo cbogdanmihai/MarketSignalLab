@@ -15,10 +15,38 @@ struct LabelCalibrationPolicy: Identifiable, Codable, Equatable, Sendable {
     let targetATRMultiple: Double?
     let stopATRMultiple: Double?
 
-    let shortFixedTargetPct: Double? = nil
-    let shortFixedStopPct: Double? = nil
-    let shortTargetATRMultiple: Double? = nil
-    let shortStopATRMultiple: Double? = nil
+    let shortFixedTargetPct: Double?
+    let shortFixedStopPct: Double?
+    let shortTargetATRMultiple: Double?
+    let shortStopATRMultiple: Double?
+
+    init(
+        id: String,
+        name: String,
+        kind: LabelCalibrationPolicyKind,
+        horizonMinutes: Int,
+        fixedTargetPct: Double?,
+        fixedStopPct: Double?,
+        targetATRMultiple: Double?,
+        stopATRMultiple: Double?,
+        shortFixedTargetPct: Double? = nil,
+        shortFixedStopPct: Double? = nil,
+        shortTargetATRMultiple: Double? = nil,
+        shortStopATRMultiple: Double? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.horizonMinutes = horizonMinutes
+        self.fixedTargetPct = fixedTargetPct
+        self.fixedStopPct = fixedStopPct
+        self.targetATRMultiple = targetATRMultiple
+        self.stopATRMultiple = stopATRMultiple
+        self.shortFixedTargetPct = shortFixedTargetPct
+        self.shortFixedStopPct = shortFixedStopPct
+        self.shortTargetATRMultiple = shortTargetATRMultiple
+        self.shortStopATRMultiple = shortStopATRMultiple
+    }
 
     func thresholds(
         atr14Pct: Double
