@@ -362,6 +362,7 @@ private struct AssetDashboard: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(
                         store.status.isLoading
+                        || store.isValidatingUniverse
                         || validation.availability == .restricted
                         || validation.availability == .unavailable
                     )
