@@ -39,6 +39,21 @@ final class AppStore: ObservableObject {
     @Published private(set)
     var historyMessage = "Historical downloader ready."
 
+    @Published private(set)
+    var researchRows: [ResearchRow] = []
+
+    @Published private(set)
+    var researchFolds: [WalkForwardFold] = []
+
+    @Published private(set)
+    var researchSummary: ResearchDatasetSummary?
+
+    @Published private(set)
+    var isBuildingResearchDataset = false
+
+    @Published private(set)
+    var researchMessage = "Research dataset not built yet."
+
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
@@ -232,6 +247,14 @@ final class AppStore: ObservableObject {
     func loadLocalBars() async {
         guard let asset = selectedAsset else {
             return
+        }
+
+        if researchSummary?.symbol != asset.symbol {
+            researchRows = []
+            researchFolds = []
+            researchSummary = nil
+            researchMessage =
+                "Research dataset not built yet."
         }
 
         do {
@@ -546,6 +569,79 @@ final class AppStore: ObservableObject {
         }
 
         return chunks
+    }
+
+    func buildResearchDataset() async {
+        guard let asset = selectedAsset else {
+            return
+        }
+
+        guard !isBuildingResearchDataset else {
+            return
+        }
+
+        isBuildingResearchDataset = true
+        researchMessage =
+            "Building features, labels and purged walk-forward folds for \(asset.symbol)…"
+
+        defer {
+            isBuildingResearchDataset = false
+        }
+
+        do {
+            let localBars = try await repository.load(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
+            guard localBars.count >= 300 else {
+                researchRows = []
+                researchFolds = []
+                researchSummary = nil
+                researchMessage =
+                    "Need at least 300 local 1-minute bars before building a research dataset."
+
+                log(
+                    "warning",
+                    researchMessage
+                )
+
+                return
+            }
+
+            let result = await Task.detached(
+                priority: .userInitiated
+            ) {
+                ResearchDatasetBuilder.build(
+                    asset: asset,
+                    bars: localBars
+                )
+            }.value
+
+            researchRows = result.rows
+            researchFolds = result.folds
+            researchSummary = result.summary
+
+            researchMessage =
+                "Research dataset ready: \(result.summary.rowCount) labeled rows, \(result.summary.featureCount) features, \(result.folds.count) purged walk-forward folds."
+
+            log(
+                "info",
+                researchMessage
+            )
+
+        } catch {
+            researchRows = []
+            researchFolds = []
+            researchSummary = nil
+            researchMessage =
+                "Research dataset build failed: \(error.localizedDescription)"
+
+            log(
+                "error",
+                researchMessage
+            )
+        }
     }
 
     func prepareDiagnostics() {
