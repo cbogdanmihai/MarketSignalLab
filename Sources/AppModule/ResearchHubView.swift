@@ -18,6 +18,52 @@ struct ResearchHubView: View {
     @State
     private var scope: ResearchHubScope = .symbol
 
+    private var displayedLongTarget: Double {
+        store.labelCalibration?.recommended?.longTargetRate
+        ?? store.researchSummary?.longTargetRate
+        ?? 0
+    }
+
+    private var displayedShortTarget: Double {
+        store.labelCalibration?.recommended?.shortTargetRate
+        ?? store.researchSummary?.shortTargetRate
+        ?? 0
+    }
+
+    private var displayedLongTimeout: Double {
+        store.labelCalibration?.recommended?.longTimeoutRate
+        ?? store.researchSummary?.longTimeoutRate
+        ?? 0
+    }
+
+    private var displayedShortTimeout: Double {
+        store.labelCalibration?.recommended?.shortTimeoutRate
+        ?? store.researchSummary?.shortTimeoutRate
+        ?? 0
+    }
+
+    private var acceptanceLow: Double {
+        store.labelCalibration?.targetBandLow
+        ?? 0.08
+    }
+
+    private var acceptanceHigh: Double {
+        store.labelCalibration?.targetBandHigh
+        ?? 0.20
+    }
+
+    private var labelQualitySubtitle: String {
+        if let policy =
+            store.labelCalibration?
+                .recommended?
+                .policy.name {
+
+            return "Recommended calibration · \(policy)"
+        }
+
+        return "Baseline target-before-stop distribution"
+    }
+
     var body: some View {
         ScrollView {
             VStack(
@@ -96,6 +142,8 @@ struct ResearchHubView: View {
 
             if let summary = store.researchSummary {
                 metricGrid(summary)
+
+                decisionBanner(summary)
 
                 labelQuality(summary)
 
@@ -309,7 +357,7 @@ struct ResearchHubView: View {
         ResearchCard(
             title: "Label Quality",
             subtitle:
-                "Baseline target-before-stop distribution"
+                labelQualitySubtitle
         ) {
             VStack(
                 alignment: .leading,
@@ -319,23 +367,23 @@ struct ResearchHubView: View {
                     RateMetric(
                         title: "LONG target",
                         value:
-                            summary.longTargetRate,
+                            displayedLongTarget,
                         desired:
-                            0.08...0.20
+                            acceptanceLow...acceptanceHigh
                     )
 
                     RateMetric(
                         title: "SHORT target",
                         value:
-                            summary.shortTargetRate,
+                            displayedShortTarget,
                         desired:
-                            0.08...0.20
+                            acceptanceLow...acceptanceHigh
                     )
 
                     RateMetric(
                         title: "LONG timeout",
                         value:
-                            summary.longTimeoutRate,
+                            displayedLongTimeout,
                         desired:
                             nil
                     )
@@ -343,7 +391,7 @@ struct ResearchHubView: View {
                     RateMetric(
                         title: "SHORT timeout",
                         value:
-                            summary.shortTimeoutRate,
+                            displayedShortTimeout,
                         desired:
                             nil
                     )
@@ -357,7 +405,7 @@ struct ResearchHubView: View {
                         ),
                         y: .value(
                             "Target rate",
-                            summary.longTargetRate * 100
+                            displayedLongTarget * 100
                         )
                     )
                     .foregroundStyle(
@@ -371,7 +419,7 @@ struct ResearchHubView: View {
                         ),
                         y: .value(
                             "Target rate",
-                            summary.shortTargetRate * 100
+                            displayedShortTarget * 100
                         )
                     )
                     .foregroundStyle(
@@ -381,7 +429,7 @@ struct ResearchHubView: View {
                     RuleMark(
                         y: .value(
                             "Minimum",
-                            8
+                            acceptanceLow * 100
                         )
                     )
                     .foregroundStyle(
@@ -392,7 +440,25 @@ struct ResearchHubView: View {
                             dash: [4, 3]
                         )
                     )
+
+                    RuleMark(
+                        y: .value(
+                            "Maximum",
+                            acceptanceHigh * 100
+                        )
+                    )
+                    .foregroundStyle(
+                        .orange.opacity(0.7)
+                    )
+                    .lineStyle(
+                        StrokeStyle(
+                            dash: [4, 3]
+                        )
+                    )
                 }
+                .chartYScale(
+                    domain: 0...25
+                )
                 .chartYAxis {
                     AxisMarks(
                         position: .trailing
@@ -410,19 +476,106 @@ struct ResearchHubView: View {
                 }
                 .frame(height: 150)
 
-                Text(
-                    readinessText(
-                        summary
+                HStack(spacing: 8) {
+                    Label(
+                        "Acceptance band \(percent(acceptanceLow))–\(percent(acceptanceHigh))",
+                        systemImage: "scope"
                     )
-                )
-                .font(.callout)
-                .foregroundStyle(
-                    readinessColor(
-                        summary
-                    )
-                )
+
+                    if store.labelCalibration?.recommended != nil {
+                        Text(
+                            "Showing recommended calibration, not the baseline label."
+                        )
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func decisionBanner(
+        _ summary: ResearchDatasetSummary
+    ) -> some View {
+        let calibration =
+            store.labelCalibration?.recommended
+
+        let title: String
+        let detail: String
+        let color: Color
+        let icon: String
+
+        if summary.sessionCount < 18 {
+            title = "Collect more history"
+            detail =
+                "Only \(summary.sessionCount) independent sessions are available. Keep model training blocked."
+            color = .orange
+            icon = "clock.badge.exclamationmark"
+
+        } else if let calibration,
+                  calibration.meetsAcceptanceBand {
+            title = "Label policy ready"
+            detail =
+                "\(calibration.policy.name) is inside the target-event acceptance band. Next: lock the policy before model training."
+            color = .green
+            icon = "checkmark.seal.fill"
+
+        } else if let calibration {
+            title = "Label policy needs refinement"
+            detail =
+                calibrationIssueText(
+                    calibration
+                )
+            color = .orange
+            icon = "slider.horizontal.3"
+
+        } else {
+            title = "Run label calibration"
+            detail =
+                "Data coverage is sufficient. Calibrate label policies before training so the test sessions remain untouched."
+            color = .blue
+            icon = "flask"
+        }
+
+        return HStack(
+            alignment: .top,
+            spacing: 12
+        ) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+
+            VStack(
+                alignment: .leading,
+                spacing: 3
+            ) {
+                Text(title)
+                    .font(.headline)
+
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(
+            color.opacity(0.10),
+            in:
+                RoundedRectangle(
+                    cornerRadius: 12
+                )
+        )
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: 12
+            )
+            .stroke(
+                color.opacity(0.25),
+                lineWidth: 1
+            )
+        )
     }
 
     private var walkForwardSection: some View {
@@ -561,7 +714,11 @@ struct ResearchHubView: View {
                             ) { candidate in
                                 CalibrationCandidateRow(
                                     candidate:
-                                        candidate
+                                        candidate,
+                                    targetLow:
+                                        calibration.targetBandLow,
+                                    targetHigh:
+                                        calibration.targetBandHigh
                                 )
                             }
                         }
@@ -946,6 +1103,41 @@ struct ResearchHubView: View {
             : "Review"
     }
 
+    private func calibrationIssueText(
+        _ candidate: LabelCalibrationCandidateResult
+    ) -> String {
+        var issues: [String] = []
+
+        if candidate.longTargetRate < acceptanceLow {
+            issues.append(
+                "LONG \(percent(candidate.longTargetRate)) is below \(percent(acceptanceLow))"
+            )
+        } else if candidate.longTargetRate > acceptanceHigh {
+            issues.append(
+                "LONG \(percent(candidate.longTargetRate)) is above \(percent(acceptanceHigh))"
+            )
+        }
+
+        if candidate.shortTargetRate < acceptanceLow {
+            issues.append(
+                "SHORT \(percent(candidate.shortTargetRate)) is below \(percent(acceptanceLow))"
+            )
+        } else if candidate.shortTargetRate > acceptanceHigh {
+            issues.append(
+                "SHORT \(percent(candidate.shortTargetRate)) is above \(percent(acceptanceHigh))"
+            )
+        }
+
+        if issues.isEmpty {
+            return "Best candidate still misses a calibration acceptance condition."
+        }
+
+        return issues.joined(
+            separator: " · "
+        )
+        + ". Expand/refine the calibration grid before Phase 2C."
+    }
+
     private func readinessText(
         _ summary: ResearchDatasetSummary
     ) -> String {
@@ -1196,6 +1388,32 @@ private struct FoldCard: View {
 
 private struct CalibrationCandidateRow: View {
     let candidate: LabelCalibrationCandidateResult
+    let targetLow: Double
+    let targetHigh: Double
+
+    private var statusText: String {
+        if candidate.meetsAcceptanceBand {
+            return "accepted"
+        }
+
+        var issues: [String] = []
+
+        if candidate.longTargetRate < targetLow {
+            issues.append("L low")
+        } else if candidate.longTargetRate > targetHigh {
+            issues.append("L high")
+        }
+
+        if candidate.shortTargetRate < targetLow {
+            issues.append("S low")
+        } else if candidate.shortTargetRate > targetHigh {
+            issues.append("S high")
+        }
+
+        return issues.isEmpty
+        ? "outside band"
+        : issues.joined(separator: " · ")
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1208,57 +1426,80 @@ private struct CalibrationCandidateRow: View {
                 )
                 .font(.subheadline.weight(.semibold))
 
-                Text(
-                    candidate.meetsAcceptanceBand
-                    ? "accepted"
-                    : "outside band"
-                )
-                .font(.caption2)
-                .foregroundStyle(
-                    candidate.meetsAcceptanceBand
-                    ? Color.green
-                    : Color.secondary
-                )
+                Text(statusText)
+                    .font(.caption2)
+                    .foregroundStyle(
+                        candidate.meetsAcceptanceBand
+                        ? Color.green
+                        : Color.orange
+                    )
             }
 
             Spacer()
 
-            Text(
-                candidate.longTargetRate,
-                format:
-                    .percent.precision(
-                        .fractionLength(1)
-                    )
-            )
-            .monospacedDigit()
+            VStack(
+                alignment: .trailing,
+                spacing: 1
+            ) {
+                Text("LONG")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
 
-            Text(
-                candidate.shortTargetRate,
-                format:
-                    .percent.precision(
-                        .fractionLength(1)
-                    )
-            )
-            .monospacedDigit()
+                Text(
+                    candidate.longTargetRate,
+                    format:
+                        .percent.precision(
+                            .fractionLength(1)
+                        )
+                )
+                .monospacedDigit()
+            }
 
-            Text(
-                candidate.score,
-                format:
-                    .number.precision(
-                        .fractionLength(1)
-                    )
-            )
-            .font(.headline)
-            .monospacedDigit()
+            VStack(
+                alignment: .trailing,
+                spacing: 1
+            ) {
+                Text("SHORT")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text(
+                    candidate.shortTargetRate,
+                    format:
+                        .percent.precision(
+                            .fractionLength(1)
+                        )
+                )
+                .monospacedDigit()
+            }
+
+            VStack(
+                alignment: .trailing,
+                spacing: 1
+            ) {
+                Text("SCORE")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Text(
+                    candidate.score,
+                    format:
+                        .number.precision(
+                            .fractionLength(1)
+                        )
+                )
+                .font(.headline)
+                .monospacedDigit()
+            }
             .frame(
-                width: 50,
+                width: 58,
                 alignment: .trailing
             )
         }
         .font(.caption)
         .padding(
             .vertical,
-            4
+            5
         )
     }
 }
