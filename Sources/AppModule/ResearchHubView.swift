@@ -15,6 +15,9 @@ struct ResearchHubView: View {
     @EnvironmentObject
     private var store: AppStore
 
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     @State
     private var scope: ResearchHubScope = .symbol
 
@@ -78,7 +81,9 @@ struct ResearchHubView: View {
                     allSymbolsResearch
                 }
             }
-            .padding(20)
+            .padding(
+                20 * densityScale
+            )
         }
         .background(
             Color(
@@ -101,12 +106,7 @@ struct ResearchHubView: View {
                 spacing: 4
             ) {
                 Text("Research Lab")
-                    .font(
-                        .system(
-                            size: 28,
-                            weight: .bold
-                        )
-                    )
+                    .font(.title.bold())
 
                 Text(
                     "Causal features · label calibration · walk-forward validation"
@@ -116,6 +116,8 @@ struct ResearchHubView: View {
             }
 
             Spacer()
+
+            TerminalDensityControl()
 
             Picker(
                 "Scope",
@@ -1228,7 +1230,9 @@ private struct ResearchCard<Content: View>: View {
 
             content
         }
-        .padding(16)
+        .padding(
+            16 * densityScale
+        )
         .background(
             Color(
                 uiColor:
@@ -1270,7 +1274,9 @@ private struct MetricTile: View {
             minHeight: 92,
             alignment: .leading
         )
-        .padding(12)
+        .padding(
+            12 * densityScale
+        )
         .background(
             Color(
                 uiColor:
