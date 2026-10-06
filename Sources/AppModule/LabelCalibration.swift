@@ -392,10 +392,10 @@ enum LabelCalibrationEngine {
         }
 
         for session in sessions {
-            evaluateSession(
+            accumulators = evaluateSession(
                 session,
                 candidates: candidates,
-                accumulators: &accumulators
+                accumulators: accumulators
             )
         }
 
@@ -705,16 +705,21 @@ enum LabelCalibrationEngine {
     private static func evaluateSession(
         _ session: SessionBars,
         candidates: [LabelCalibrationPolicy],
-        accumulators: inout [
+        accumulators: [
             String: CandidateAccumulator
         ]
-    ) {
+    ) -> [
+        String: CandidateAccumulator
+    ] {
         let bars = session.bars
         let minimumHistory = 60
 
         guard bars.count > minimumHistory else {
-            return
+            return accumulators
         }
+
+        var updatedAccumulators =
+            accumulators
 
         var sessionCounts: [
             String: SessionCounts
@@ -769,26 +774,46 @@ enum LabelCalibrationEngine {
                             thresholds.shortStopPct
                     )
 
-                accumulators[candidate.id]?.add(
-                    outcome: outcome,
-                    longTargetPct:
-                        thresholds.longTargetPct,
-                    longStopPct:
-                        thresholds.longStopPct,
-                    shortTargetPct:
-                        thresholds.shortTargetPct,
-                    shortStopPct:
-                        thresholds.shortStopPct
-                )
+                if var accumulator =
+                    updatedAccumulators[
+                        candidate.id
+                    ] {
 
-                sessionCounts[candidate.id]?.samples += 1
+                    accumulator.add(
+                        outcome: outcome,
+                        longTargetPct:
+                            thresholds.longTargetPct,
+                        longStopPct:
+                            thresholds.longStopPct,
+                        shortTargetPct:
+                            thresholds.shortTargetPct,
+                        shortStopPct:
+                            thresholds.shortStopPct
+                    )
 
-                if outcome.long == .target {
-                    sessionCounts[candidate.id]?.longTargets += 1
+                    updatedAccumulators[
+                        candidate.id
+                    ] = accumulator
                 }
 
-                if outcome.short == .target {
-                    sessionCounts[candidate.id]?.shortTargets += 1
+                if var counts =
+                    sessionCounts[
+                        candidate.id
+                    ] {
+
+                    counts.samples += 1
+
+                    if outcome.long == .target {
+                        counts.longTargets += 1
+                    }
+
+                    if outcome.short == .target {
+                        counts.shortTargets += 1
+                    }
+
+                    sessionCounts[
+                        candidate.id
+                    ] = counts
                 }
             }
         }
@@ -796,9 +821,13 @@ enum LabelCalibrationEngine {
         for candidate in candidates {
             guard
                 var accumulator =
-                    accumulators[candidate.id],
+                    updatedAccumulators[
+                        candidate.id
+                    ],
                 let counts =
-                    sessionCounts[candidate.id]
+                    sessionCounts[
+                        candidate.id
+                    ]
             else {
                 continue
             }
@@ -807,9 +836,12 @@ enum LabelCalibrationEngine {
                 counts: counts
             )
 
-            accumulators[candidate.id] =
-                accumulator
+            updatedAccumulators[
+                candidate.id
+            ] = accumulator
         }
+
+        return updatedAccumulators
     }
 
     private static func evaluateOutcome(
