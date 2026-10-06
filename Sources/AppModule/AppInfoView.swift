@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.2.2"
-    private let fallbackBuild = "9"
-    private let releaseName = "Phase 2A.2 — Empty-Window Handling"
+    private let fallbackVersion = "0.3.0"
+    private let fallbackBuild = "10"
+    private let releaseName = "Phase 2B — Research Dataset"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -156,6 +156,20 @@ struct AppInfoView: View {
                         value: store.isDownloadingHistory
                             ? "\(store.historyCompletedChunks) / \(store.historyTotalChunks)"
                             : "Idle"
+                    )
+
+                    LabeledContent(
+                        "Research rows",
+                        value: String(
+                            store.researchSummary?.rowCount ?? 0
+                        )
+                    )
+
+                    LabeledContent(
+                        "Walk-forward folds",
+                        value: String(
+                            store.researchFolds.count
+                        )
                     )
                 }
 
