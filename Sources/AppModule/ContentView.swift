@@ -43,6 +43,18 @@ struct ContentView: View {
     @State
     private var showingAppInfo = false
 
+    @AppStorage(
+        TerminalDensity.storageKey
+    )
+    private var densityRaw =
+        TerminalDensity.standard.rawValue
+
+    private var density: TerminalDensity {
+        TerminalDensity(
+            rawValue: densityRaw
+        ) ?? .standard
+    }
+
     private var filteredTradeable:
         [AssetConfig] {
 
@@ -87,6 +99,16 @@ struct ContentView: View {
             AppInfoView()
                 .environmentObject(store)
         }
+        .dynamicTypeSize(
+            density.dynamicTypeSize
+        )
+        .controlSize(
+            density.controlSize
+        )
+        .environment(
+            \.terminalDensityScale,
+            density.layoutScale
+        )
         .task {
             await store.loadLocalBars()
             await store.refreshStorageOverview()
