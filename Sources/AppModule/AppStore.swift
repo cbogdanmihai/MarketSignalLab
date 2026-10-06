@@ -21,6 +21,24 @@ final class AppStore: ObservableObject {
     @Published private(set)
     var diagnosticsURL: URL?
 
+    @Published private(set)
+    var storageStats = BarStorageStats.empty
+
+    @Published private(set)
+    var isDownloadingHistory = false
+
+    @Published private(set)
+    var historyCompletedChunks = 0
+
+    @Published private(set)
+    var historyTotalChunks = 0
+
+    @Published private(set)
+    var historyBarsSaved = 0
+
+    @Published private(set)
+    var historyMessage = "Historical downloader ready."
+
     @Published
     var apiKey: String = KeychainStore.loadAPIKey()
 
@@ -34,7 +52,7 @@ final class AppStore: ObservableObject {
     private var diagnosticEvents: [DiagnosticEvent] = []
 
     init(
-        repository: any BarRepository = JSONBarRepository()
+        repository: any BarRepository = PartitionedJSONBarRepository()
     ) {
         self.repository = repository
 
@@ -222,6 +240,11 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            storageStats = try await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
             if bars.isEmpty {
                 status.message =
                     "No local bars yet for \(asset.symbol)."
@@ -282,6 +305,11 @@ final class AppStore: ObservableObject {
                 timeframe: "1min"
             )
 
+            storageStats = try await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
             validations[asset.symbol] = AssetValidationState(
                 availability: .available,
                 message: "\(asset.providerSymbol) works on the current Twelve Data account.",
@@ -322,6 +350,202 @@ final class AppStore: ObservableObject {
             status.message = error.localizedDescription
             log("error", status.message)
         }
+    }
+
+    func estimatedHistoricalChunks(
+        startDate: Date,
+        endDate: Date
+    ) -> Int {
+        guard endDate > startDate else {
+            return 0
+        }
+
+        let chunkSeconds: TimeInterval =
+            3 * 24 * 60 * 60
+
+        return Int(
+            ceil(
+                endDate.timeIntervalSince(startDate)
+                / chunkSeconds
+            )
+        )
+    }
+
+    func downloadHistoricalData(
+        startDate: Date,
+        endDate: Date
+    ) async {
+        guard let asset = selectedAsset else {
+            return
+        }
+
+        guard !isDownloadingHistory else {
+            return
+        }
+
+        let key = apiKey.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        guard !key.isEmpty else {
+            historyMessage =
+                "Add your Twelve Data API key first."
+            return
+        }
+
+        guard endDate > startDate else {
+            historyMessage =
+                "End date must be later than start date."
+            return
+        }
+
+        let maximumRange: TimeInterval =
+            90 * 24 * 60 * 60
+
+        guard endDate.timeIntervalSince(startDate)
+                <= maximumRange else {
+            historyMessage =
+                "Phase 2A limits one 1-minute import to 90 days. Split larger history into multiple runs."
+            return
+        }
+
+        isDownloadingHistory = true
+        historyCompletedChunks = 0
+        historyBarsSaved = 0
+
+        let chunks = historicalChunks(
+            startDate: startDate,
+            endDate: endDate
+        )
+
+        historyTotalChunks = chunks.count
+
+        defer {
+            isDownloadingHistory = false
+        }
+
+        let provider = TwelveDataProvider(
+            apiKey: key
+        )
+
+        log(
+            "info",
+            "Historical import started for \(asset.symbol): \(chunks.count) chunks."
+        )
+
+        for (index, chunk) in chunks.enumerated() {
+            historyMessage =
+                "Downloading \(asset.symbol) chunk \(index + 1) / \(chunks.count)…"
+
+            do {
+                let downloaded =
+                    try await provider.historicalBars(
+                        for: asset,
+                        interval: "1min",
+                        startDate: chunk.start,
+                        endDate: chunk.end
+                    )
+
+                try await repository.save(
+                    downloaded
+                )
+
+                historyBarsSaved += downloaded.count
+
+            } catch let error as MarketDataError {
+                if case .noData = error {
+                    log(
+                        "info",
+                        "No bars in historical chunk \(index + 1) for \(asset.symbol); continuing."
+                    )
+                } else {
+                    historyMessage =
+                        "Historical import stopped: \(error.localizedDescription)"
+
+                    log(
+                        "error",
+                        historyMessage
+                    )
+
+                    historyCompletedChunks = index
+                    return
+                }
+
+            } catch {
+                historyMessage =
+                    "Historical import stopped: \(error.localizedDescription)"
+
+                log(
+                    "error",
+                    historyMessage
+                )
+
+                historyCompletedChunks = index
+                return
+            }
+
+            historyCompletedChunks = index + 1
+        }
+
+        do {
+            bars = try await repository.load(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
+            storageStats = try await repository.stats(
+                symbol: asset.symbol,
+                timeframe: "1min"
+            )
+
+            historyMessage =
+                "Historical import complete. Received \(historyBarsSaved) bars; local deduplicated total \(storageStats.count)."
+
+            status.message = historyMessage
+            status.lastRefresh = Date()
+
+            log(
+                "info",
+                historyMessage
+            )
+
+        } catch {
+            historyMessage =
+                "Historical data saved, but local reload failed: \(error.localizedDescription)"
+
+            log(
+                "error",
+                historyMessage
+            )
+        }
+    }
+
+    private func historicalChunks(
+        startDate: Date,
+        endDate: Date
+    ) -> [(start: Date, end: Date)] {
+        let chunkSeconds: TimeInterval =
+            3 * 24 * 60 * 60
+
+        var chunks: [(Date, Date)] = []
+        var cursor = startDate
+
+        while cursor < endDate {
+            let next = min(
+                cursor.addingTimeInterval(
+                    chunkSeconds
+                ),
+                endDate
+            )
+
+            chunks.append(
+                (cursor, next)
+            )
+
+            cursor = next
+        }
+
+        return chunks
     }
 
     func prepareDiagnostics() {
