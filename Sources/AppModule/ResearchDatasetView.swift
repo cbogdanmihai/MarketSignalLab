@@ -214,10 +214,20 @@ struct ResearchDatasetView: View {
 
                 Section("Walk-forward validation") {
                     if store.researchFolds.isEmpty {
-                        Text(
-                            "Build the dataset first. With enough rows, the app creates three expanding walk-forward folds with a 90-minute purge before validation/test boundaries to reduce label leakage."
-                        )
-                        .foregroundStyle(.secondary)
+                        if let summary = store.researchSummary,
+                           summary.sessionCount < 18 {
+
+                            Text(
+                                "Only \(summary.sessionCount) complete sessions are available. Model training is intentionally blocked until at least 18 independent sessions exist. Download about 60 calendar days of history for a more useful baseline."
+                            )
+                            .foregroundStyle(.orange)
+
+                        } else {
+                            Text(
+                                "Build the dataset first. With enough history, the app creates three expanding walk-forward folds split only on full-session boundaries."
+                            )
+                            .foregroundStyle(.secondary)
+                        }
 
                     } else {
                         ForEach(
@@ -272,6 +282,32 @@ struct ResearchDatasetView: View {
                                 .vertical,
                                 4
                             )
+                        }
+                    }
+                }
+
+                if let summary = store.researchSummary {
+                    Section("Training readiness") {
+                        if summary.sessionCount < 18 {
+                            Text(
+                                "NOT READY: the current dataset is useful for validating the feature/label pipeline, but it is too small for credible out-of-sample model selection."
+                            )
+                            .foregroundStyle(.orange)
+
+                        } else if min(
+                            summary.longTargetRate,
+                            summary.shortTargetRate
+                        ) < 0.05 {
+                            Text(
+                                "CAUTION: at least one target class is below 5%. We should calibrate the target/stop policy before training a production signal model."
+                            )
+                            .foregroundStyle(.orange)
+
+                        } else {
+                            Text(
+                                "READY FOR BASELINE: there are enough independent sessions to run the first walk-forward baseline."
+                            )
+                            .foregroundStyle(.green)
                         }
                     }
                 }
