@@ -35,6 +35,21 @@ enum ProfessionalChartInterval: Int, CaseIterable, Identifiable {
             return "1h"
         }
     }
+
+    var recommendedRange: ProfessionalChartRange {
+        switch self {
+        case .oneMinute,
+             .fiveMinutes:
+            return .oneDay
+
+        case .fifteenMinutes,
+             .thirtyMinutes:
+            return .fiveDays
+
+        case .oneHour:
+            return .oneMonth
+        }
+    }
 }
 
 enum ProfessionalChartRange: String, CaseIterable, Identifiable {
@@ -46,22 +61,10 @@ enum ProfessionalChartRange: String, CaseIterable, Identifiable {
     var id: String {
         rawValue
     }
-
-    var sessions: Int? {
-        switch self {
-        case .oneDay:
-            return 1
-        case .fiveDays:
-            return 5
-        case .oneMonth:
-            return 22
-        case .all:
-            return nil
-        }
-    }
 }
 
 private struct ProfessionalChartPoint: Identifiable {
+    let index: Int
     let bar: MarketBar
     let sma20: Double?
     let sma50: Double?
@@ -101,13 +104,16 @@ struct ProfessionalChartView: View {
     private var showVolume = true
 
     @State
-    private var selectedTimestamp: Date?
+    private var selectedIndex: Int?
 
     @State
-    private var scrollPosition = Date()
+    private var scrollPosition = 0.0
 
     @State
     private var zoomLevel = 1.0
+
+    @State
+    private var pinchBaseZoom = 1.0
 
     @State
     private var inspectionMode = false
@@ -120,73 +126,126 @@ struct ProfessionalChartView: View {
     }
 
     private var chartBars: [MarketBar] {
-        // Keep enough history loaded for horizontal scrolling without
-        // asking Swift Charts to render an unbounded 1-minute archive.
+        // Current research histories are small enough to keep the complete
+        // aggregated series in memory. A generous cap protects Swift Charts
+        // from accidental multi-year 1-minute archives.
         Array(
-            aggregatedBars.suffix(5000)
+            aggregatedBars.suffix(20_000)
         )
     }
 
-    private var baseVisibleDuration: TimeInterval {
-        let day: TimeInterval =
-            24 * 60 * 60
+    private var baseVisibleBarCount: Int {
+        guard !chartBars.isEmpty else {
+            return 1
+        }
+
+        let sessionMinutes =
+            asset.assetClass == .crypto
+            ? 1440
+            : 390
+
+        let barsPerSession = max(
+            1,
+            Int(
+                ceil(
+                    Double(sessionMinutes)
+                    / Double(interval.rawValue)
+                )
+            )
+        )
+
+        let requested: Int
 
         switch range {
         case .oneDay:
-            return asset.assetClass == .crypto
-            ? day
-            : 8 * 60 * 60
+            requested = barsPerSession
 
         case .fiveDays:
-            return 7 * day
+            requested =
+                barsPerSession * 5
 
         case .oneMonth:
-            return 31 * day
+            requested =
+                barsPerSession * 22
 
         case .all:
-            guard
-                let first =
-                    chartBars.first?.timestamp,
-                let last =
-                    chartBars.last?.timestamp
-            else {
-                return day
-            }
-
-            return max(
-                last.timeIntervalSince(first),
-                day
-            )
+            requested =
+                chartBars.count
         }
+
+        return min(
+            max(requested, 3),
+            chartBars.count
+        )
     }
 
-    private var visibleDuration: TimeInterval {
-        max(
-            baseVisibleDuration
-                / zoomLevel,
-            TimeInterval(
-                interval.rawValue * 60 * 3
+    private func visibleBarCount(
+        for zoom: Double
+    ) -> Int {
+        guard !chartBars.isEmpty else {
+            return 1
+        }
+
+        let count = Int(
+            round(
+                Double(baseVisibleBarCount)
+                / zoom
             )
+        )
+
+        return min(
+            max(count, 3),
+            chartBars.count
+        )
+    }
+
+    private var visibleBarCount: Int {
+        visibleBarCount(
+            for: zoomLevel
+        )
+    }
+
+    private var visibleStartIndex: Int {
+        let maximumStart = max(
+            0,
+            chartBars.count
+                - visibleBarCount
+        )
+
+        return min(
+            max(
+                Int(
+                    floor(scrollPosition)
+                ),
+                0
+            ),
+            maximumStart
+        )
+    }
+
+    private var visibleEndIndex: Int {
+        min(
+            chartBars.count - 1,
+            visibleStartIndex
+                + visibleBarCount
+                - 1
         )
     }
 
     private var visibleBarsForScale: [MarketBar] {
-        let end =
-            scrollPosition.addingTimeInterval(
-                visibleDuration
-            )
-
-        let visible = chartBars.filter {
-            $0.timestamp >= scrollPosition
-            && $0.timestamp <= end
-        }
-
-        if !visible.isEmpty {
-            return visible
+        guard
+            !chartBars.isEmpty,
+            visibleStartIndex
+                <= visibleEndIndex
+        else {
+            return []
         }
 
         return Array(
-            chartBars.suffix(60)
+            chartBars[
+                visibleStartIndex
+                ...visibleEndIndex
+            ]
         )
     }
 
@@ -197,23 +256,18 @@ struct ProfessionalChartView: View {
     }
 
     private var selectedPoint: ProfessionalChartPoint? {
-        guard let selectedTimestamp else {
+        guard
+            let selectedIndex,
+            points.indices.contains(
+                selectedIndex
+            )
+        else {
             return nil
         }
 
-        return points.min {
-            abs(
-                $0.bar.timestamp.timeIntervalSince(
-                    selectedTimestamp
-                )
-            )
-            <
-            abs(
-                $1.bar.timestamp.timeIntervalSince(
-                    selectedTimestamp
-                )
-            )
-        }
+        return points[
+            selectedIndex
+        ]
     }
 
     private var yDomain: ClosedRange<Double> {
@@ -222,11 +276,15 @@ struct ProfessionalChartView: View {
         }
 
         let low =
-            visibleBarsForScale.map(\.low).min()
+            visibleBarsForScale
+                .map(\.low)
+                .min()
             ?? 0
 
         let high =
-            visibleBarsForScale.map(\.high).max()
+            visibleBarsForScale
+                .map(\.high)
+                .max()
             ?? 1
 
         let rawRange = max(
@@ -237,9 +295,11 @@ struct ProfessionalChartView: View {
             )
         )
 
-        let padding = rawRange * 0.12
+        let padding =
+            rawRange * 0.12
 
-        return (low - padding)...(high + padding)
+        return (low - padding)
+            ...(high + padding)
     }
 
     var body: some View {
@@ -253,7 +313,10 @@ struct ProfessionalChartView: View {
                 selectedBarStrip(
                     selectedPoint
                 )
-            } else if let last = chartBars.last {
+
+            } else if let last =
+                chartBars.last {
+
                 liveBarStrip(
                     last
                 )
@@ -269,7 +332,8 @@ struct ProfessionalChartView: View {
             } else {
                 ContentUnavailableView(
                     "No chart data",
-                    systemImage: "chart.xyaxis.line",
+                    systemImage:
+                        "chart.xyaxis.line",
                     description: Text(
                         "Fetch or download local market data for \(asset.symbol)."
                     )
@@ -278,7 +342,9 @@ struct ProfessionalChartView: View {
             }
         }
         .onAppear {
-            scrollToLatest()
+            applyRecommendedViewport(
+                for: interval
+            )
         }
         .onChange(
             of: bars.last?.timestamp
@@ -299,16 +365,15 @@ struct ProfessionalChartView: View {
         ) {
             HStack(spacing: 8) {
                 ForEach(
-                    ProfessionalChartInterval.allCases
+                    ProfessionalChartInterval
+                        .allCases
                 ) { item in
                     Button(item.label) {
-                        interval = item
-                        selectedTimestamp = nil
-                        scrollToLatest()
+                        applyRecommendedViewport(
+                            for: item
+                        )
                     }
-                    .buttonStyle(
-                        .bordered
-                    )
+                    .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(
                         interval == item
@@ -325,7 +390,8 @@ struct ProfessionalChartView: View {
                     selection: $chartStyle
                 ) {
                     ForEach(
-                        ProfessionalChartStyle.allCases
+                        ProfessionalChartStyle
+                            .allCases
                     ) { style in
                         Text(style.rawValue)
                             .tag(style)
@@ -333,7 +399,8 @@ struct ProfessionalChartView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(
-                    width: 180 * densityScale
+                    width:
+                        180 * densityScale
                 )
 
                 Spacer()
@@ -361,7 +428,8 @@ struct ProfessionalChartView: View {
                 } label: {
                     Label(
                         "Indicators",
-                        systemImage: "waveform.path.ecg"
+                        systemImage:
+                            "waveform.path.ecg"
                     )
                 }
                 .buttonStyle(.bordered)
@@ -371,14 +439,11 @@ struct ProfessionalChartView: View {
                     inspectionMode.toggle()
 
                     if !inspectionMode {
-                        selectedTimestamp = nil
+                        selectedIndex = nil
                     }
                 } label: {
                     Image(
-                        systemName:
-                            inspectionMode
-                            ? "scope"
-                            : "scope"
+                        systemName: "scope"
                     )
                 }
                 .buttonStyle(.bordered)
@@ -397,11 +462,14 @@ struct ProfessionalChartView: View {
 
             HStack(spacing: 8) {
                 ForEach(
-                    ProfessionalChartRange.allCases
+                    ProfessionalChartRange
+                        .allCases
                 ) { item in
                     Button(item.rawValue) {
                         range = item
-                        selectedTimestamp = nil
+                        zoomLevel = 1
+                        pinchBaseZoom = 1
+                        selectedIndex = nil
                         scrollToLatest()
                     }
                     .buttonStyle(.borderless)
@@ -423,9 +491,8 @@ struct ProfessionalChartView: View {
 
                 HStack(spacing: 4) {
                     Button {
-                        zoomLevel = max(
-                            0.5,
-                            zoomLevel / 1.4
+                        setZoom(
+                            zoomLevel / 1.35
                         )
                     } label: {
                         Image(
@@ -436,9 +503,8 @@ struct ProfessionalChartView: View {
                     .buttonStyle(.borderless)
 
                     Button {
-                        zoomLevel = min(
-                            4.0,
-                            zoomLevel * 1.4
+                        setZoom(
+                            zoomLevel * 1.35
                         )
                     } label: {
                         Image(
@@ -447,10 +513,38 @@ struct ProfessionalChartView: View {
                         )
                     }
                     .buttonStyle(.borderless)
+
+                    Button {
+                        zoomLevel = 1
+                        pinchBaseZoom = 1
+                        scrollToLatest()
+                    } label: {
+                        Image(
+                            systemName:
+                                "arrow.left.and.right"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                    .help(
+                        "Fit selected range"
+                    )
+
+                    Button {
+                        scrollToLatest()
+                    } label: {
+                        Image(
+                            systemName:
+                                "forward.end.fill"
+                        )
+                    }
+                    .buttonStyle(.borderless)
+                    .help(
+                        "Jump to latest"
+                    )
                 }
 
                 Text(
-                    "\(chartBars.count) loaded · \(interval.label) · drag to scroll"
+                    "\(visibleBarCount) visible / \(chartBars.count) loaded · \(interval.label)"
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -465,8 +559,8 @@ struct ProfessionalChartView: View {
                 case .candles:
                     RuleMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         yStart: .value(
                             "Low",
@@ -485,8 +579,8 @@ struct ProfessionalChartView: View {
 
                     RectangleMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         yStart: .value(
                             "Body Low",
@@ -515,8 +609,8 @@ struct ProfessionalChartView: View {
                 case .line:
                     LineMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         y: .value(
                             "Close",
@@ -531,12 +625,13 @@ struct ProfessionalChartView: View {
                 }
 
                 if showSMA20,
-                   let sma20 = point.sma20 {
+                   let sma20 =
+                    point.sma20 {
 
                     LineMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         y: .value(
                             "SMA20",
@@ -547,9 +642,7 @@ struct ProfessionalChartView: View {
                             "SMA20"
                         )
                     )
-                    .foregroundStyle(
-                        .orange
-                    )
+                    .foregroundStyle(.orange)
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1
@@ -558,12 +651,13 @@ struct ProfessionalChartView: View {
                 }
 
                 if showSMA50,
-                   let sma50 = point.sma50 {
+                   let sma50 =
+                    point.sma50 {
 
                     LineMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         y: .value(
                             "SMA50",
@@ -574,9 +668,7 @@ struct ProfessionalChartView: View {
                             "SMA50"
                         )
                     )
-                    .foregroundStyle(
-                        .purple
-                    )
+                    .foregroundStyle(.purple)
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1
@@ -585,12 +677,13 @@ struct ProfessionalChartView: View {
                 }
 
                 if showVWAP,
-                   let vwap = point.vwap {
+                   let vwap =
+                    point.vwap {
 
                     LineMark(
                         x: .value(
-                            "Time",
-                            point.bar.timestamp
+                            "Bar",
+                            Double(point.index)
                         ),
                         y: .value(
                             "VWAP",
@@ -601,9 +694,7 @@ struct ProfessionalChartView: View {
                             "VWAP"
                         )
                     )
-                    .foregroundStyle(
-                        .blue
-                    )
+                    .foregroundStyle(.blue)
                     .lineStyle(
                         StrokeStyle(
                             lineWidth: 1.1,
@@ -617,7 +708,9 @@ struct ProfessionalChartView: View {
                 RuleMark(
                     x: .value(
                         "Selected",
-                        selectedPoint.bar.timestamp
+                        Double(
+                            selectedPoint.index
+                        )
                     )
                 )
                 .foregroundStyle(
@@ -654,7 +747,10 @@ struct ProfessionalChartView: View {
             .horizontal
         )
         .chartXVisibleDomain(
-            length: visibleDuration
+            length:
+                Double(
+                    visibleBarCount
+                )
         )
         .chartScrollPosition(
             x: $scrollPosition
@@ -667,17 +763,26 @@ struct ProfessionalChartView: View {
             ) { value in
                 AxisGridLine()
                     .foregroundStyle(
-                        .secondary.opacity(0.12)
+                        .secondary
+                            .opacity(0.12)
                     )
 
-                AxisValueLabel(
-                    format:
-                        .dateTime
-                        .month(.abbreviated)
-                        .day()
-                        .hour()
-                        .minute()
-                )
+                AxisValueLabel {
+                    if let raw =
+                        value.as(
+                            Double.self
+                        ) {
+
+                        Text(
+                            axisLabel(
+                                for:
+                                    Int(
+                                        round(raw)
+                                    )
+                            )
+                        )
+                    }
+                }
             }
         }
         .chartYAxis {
@@ -686,7 +791,8 @@ struct ProfessionalChartView: View {
             ) { _ in
                 AxisGridLine()
                     .foregroundStyle(
-                        .secondary.opacity(0.12)
+                        .secondary
+                            .opacity(0.12)
                     )
 
                 AxisValueLabel()
@@ -718,13 +824,16 @@ struct ProfessionalChartView: View {
                                     value.location.x
                                     - plotFrame.origin.x
 
-                                if let date: Date =
+                                if let raw:
+                                    Double =
                                     proxy.value(
                                         atX: x
                                     ) {
 
-                                    selectedTimestamp =
-                                        date
+                                    selectedIndex =
+                                        nearestIndex(
+                                            raw
+                                        )
                                 }
                             }
                         )
@@ -738,6 +847,23 @@ struct ProfessionalChartView: View {
                 }
             }
         }
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { value in
+                    guard !inspectionMode else {
+                        return
+                    }
+
+                    setZoom(
+                        pinchBaseZoom
+                            * value
+                    )
+                }
+                .onEnded { _ in
+                    pinchBaseZoom =
+                        zoomLevel
+                }
+        )
         .frame(
             minHeight:
                 420 * densityScale
@@ -745,27 +871,34 @@ struct ProfessionalChartView: View {
     }
 
     private var volumeChart: some View {
-        Chart(chartBars) { bar in
-            BarMark(
-                x: .value(
-                    "Time",
-                    bar.timestamp
-                ),
-                y: .value(
-                    "Volume",
-                    bar.volume ?? 0
+        Chart {
+            ForEach(points) { point in
+                BarMark(
+                    x: .value(
+                        "Bar",
+                        Double(point.index)
+                    ),
+                    y: .value(
+                        "Volume",
+                        point.bar.volume ?? 0
+                    )
                 )
-            )
-            .foregroundStyle(
-                candleColor(bar)
+                .foregroundStyle(
+                    candleColor(
+                        point.bar
+                    )
                     .opacity(0.5)
-            )
+                )
+            }
         }
         .chartScrollableAxes(
             .horizontal
         )
         .chartXVisibleDomain(
-            length: visibleDuration
+            length:
+                Double(
+                    visibleBarCount
+                )
         )
         .chartScrollPosition(
             x: $scrollPosition
@@ -791,10 +924,8 @@ struct ProfessionalChartView: View {
         _ bar: MarketBar
     ) -> some View {
         HStack(spacing: 16) {
-            Text(
-                asset.symbol
-            )
-            .font(.headline)
+            Text(asset.symbol)
+                .font(.headline)
 
             ohlcLabel(
                 "O",
@@ -816,12 +947,19 @@ struct ProfessionalChartView: View {
                 value: bar.close
             )
 
-            if let volume = bar.volume {
+            if let volume =
+                bar.volume {
+
                 Text(
                     "V \(volume, format: .number.notation(.compactName))"
                 )
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(
+                    .caption
+                        .monospacedDigit()
+                )
+                .foregroundStyle(
+                    .secondary
+                )
             }
 
             Spacer()
@@ -835,13 +973,19 @@ struct ProfessionalChartView: View {
                     .hour()
                     .minute()
             )
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .font(
+                .caption
+                    .monospacedDigit()
+            )
+            .foregroundStyle(
+                .secondary
+            )
         }
     }
 
     private func selectedBarStrip(
-        _ point: ProfessionalChartPoint
+        _ point:
+            ProfessionalChartPoint
     ) -> some View {
         liveBarStrip(
             point.bar
@@ -871,18 +1015,25 @@ struct ProfessionalChartView: View {
     }
 
     private var candleWidth: CGFloat {
-        switch interval {
-        case .oneMinute:
-            return 2.0 * densityScale
-        case .fiveMinutes:
-            return 3.0 * densityScale
-        case .fifteenMinutes:
-            return 4.0 * densityScale
-        case .thirtyMinutes:
-            return 5.0 * densityScale
-        case .oneHour:
-            return 6.0 * densityScale
-        }
+        let approximatePlotWidth =
+            900 * densityScale
+
+        let width =
+            approximatePlotWidth
+            / CGFloat(
+                max(
+                    visibleBarCount,
+                    1
+                )
+            )
+
+        return min(
+            max(
+                width * 0.62,
+                1.0
+            ),
+            10.0
+        )
     }
 
     private func candleColor(
@@ -893,53 +1044,156 @@ struct ProfessionalChartView: View {
         : .red
     }
 
-    private func scrollToLatest() {
-        guard
-            let first =
-                chartBars.first?.timestamp,
-            let last =
-                chartBars.last?.timestamp
-        else {
+    private func applyRecommendedViewport(
+        for newInterval:
+            ProfessionalChartInterval
+    ) {
+        interval = newInterval
+        range =
+            newInterval.recommendedRange
+
+        zoomLevel = 1
+        pinchBaseZoom = 1
+        selectedIndex = nil
+
+        DispatchQueue.main.async {
+            scrollToLatest()
+        }
+    }
+
+    private func setZoom(
+        _ requestedZoom: Double
+    ) {
+        guard !chartBars.isEmpty else {
             return
         }
 
-        let candidate =
-            last.addingTimeInterval(
-                -visibleDuration
+        let oldCount =
+            visibleBarCount
+
+        let oldCenter =
+            scrollPosition
+            + Double(oldCount) / 2
+
+        let clampedZoom = min(
+            max(
+                requestedZoom,
+                0.35
+            ),
+            8.0
+        )
+
+        let newCount =
+            visibleBarCount(
+                for: clampedZoom
             )
 
-        scrollPosition = max(
-            first,
-            candidate
+        zoomLevel =
+            clampedZoom
+
+        let maximumStart =
+            max(
+                0,
+                chartBars.count
+                    - newCount
+            )
+
+        scrollPosition = min(
+            max(
+                oldCenter
+                - Double(newCount) / 2,
+                0
+            ),
+            Double(maximumStart)
         )
     }
 
+    private func scrollToLatest() {
+        let maximumStart = max(
+            0,
+            chartBars.count
+                - visibleBarCount
+        )
+
+        scrollPosition =
+            Double(maximumStart)
+    }
+
     private func clampScrollPosition() {
-        guard
-            let first =
-                chartBars.first?.timestamp,
-            let last =
-                chartBars.last?.timestamp
-        else {
-            return
+        let maximumStart = max(
+            0,
+            chartBars.count
+                - visibleBarCount
+        )
+
+        scrollPosition = min(
+            max(
+                scrollPosition,
+                0
+            ),
+            Double(maximumStart)
+        )
+    }
+
+    private func nearestIndex(
+        _ raw: Double
+    ) -> Int {
+        guard !chartBars.isEmpty else {
+            return 0
         }
 
-        let latestStart =
+        return min(
             max(
-                first,
-                last.addingTimeInterval(
-                    -visibleDuration
-                )
+                Int(
+                    round(raw)
+                ),
+                0
+            ),
+            chartBars.count - 1
+        )
+    }
+
+    private func axisLabel(
+        for index: Int
+    ) -> String {
+        guard chartBars.indices.contains(
+            index
+        ) else {
+            return ""
+        }
+
+        let date =
+            chartBars[index].timestamp
+
+        let formatter =
+            DateFormatter()
+
+        formatter.locale =
+            Locale(
+                identifier: "en_US_POSIX"
             )
 
-        if scrollPosition < first {
-            scrollPosition = first
+        formatter.timeZone =
+            TimeZone(
+                identifier:
+                    asset.timezone
+            )
+            ?? .current
+
+        if range == .oneDay {
+            formatter.dateFormat =
+                "HH:mm"
+        } else if range == .fiveDays {
+            formatter.dateFormat =
+                "EEE HH:mm"
+        } else {
+            formatter.dateFormat =
+                "MMM d"
         }
 
-        if scrollPosition > latestStart {
-            scrollPosition =
-                latestStart
-        }
+        return formatter.string(
+            from: date
+        )
     }
 
     private func aggregate(
@@ -948,7 +1202,8 @@ struct ProfessionalChartView: View {
     ) -> [MarketBar] {
         guard minutes > 1 else {
             return bars.sorted {
-                $0.timestamp < $1.timestamp
+                $0.timestamp
+                    < $1.timestamp
             }
         }
 
@@ -957,62 +1212,74 @@ struct ProfessionalChartView: View {
         )
 
         let ordered = bars.sorted {
-            $0.timestamp < $1.timestamp
+            $0.timestamp
+                < $1.timestamp
         }
 
         let grouped = Dictionary(
             grouping: ordered
         ) { bar in
             floor(
-                bar.timestamp.timeIntervalSince1970
+                bar.timestamp
+                    .timeIntervalSince1970
                 / seconds
             )
         }
 
-        return grouped.keys.sorted().compactMap {
-            bucket in
+        return grouped.keys
+            .sorted()
+            .compactMap { bucket in
+                guard
+                    let group =
+                        grouped[bucket]?
+                        .sorted(
+                            by: {
+                                $0.timestamp
+                                    < $1.timestamp
+                            }
+                        ),
+                    let first =
+                        group.first,
+                    let last =
+                        group.last
+                else {
+                    return nil
+                }
 
-            guard let group =
-                    grouped[bucket]?.sorted(
-                        by: {
-                            $0.timestamp
-                                < $1.timestamp
-                        }
-                    ),
-                  let first = group.first,
-                  let last = group.last
-            else {
-                return nil
+                let volume =
+                    group.compactMap {
+                        $0.volume
+                    }
+
+                return MarketBar(
+                    symbol: first.symbol,
+                    timestamp:
+                        Date(
+                            timeIntervalSince1970:
+                                bucket * seconds
+                        ),
+                    open: first.open,
+                    high:
+                        group.map(\.high)
+                            .max()
+                        ?? first.high,
+                    low:
+                        group.map(\.low)
+                            .min()
+                        ?? first.low,
+                    close: last.close,
+                    volume:
+                        volume.isEmpty
+                        ? nil
+                        : volume.reduce(
+                            0,
+                            +
+                        ),
+                    timeframe:
+                        "\(minutes)min",
+                    source: first.source
+                )
             }
-
-            let volume = group.compactMap {
-                $0.volume
-            }
-
-            return MarketBar(
-                symbol: first.symbol,
-                timestamp:
-                    Date(
-                        timeIntervalSince1970:
-                            bucket * seconds
-                    ),
-                open: first.open,
-                high:
-                    group.map(\.high).max()
-                    ?? first.high,
-                low:
-                    group.map(\.low).min()
-                    ?? first.low,
-                close: last.close,
-                volume:
-                    volume.isEmpty
-                    ? nil
-                    : volume.reduce(0, +),
-                timeframe:
-                    "\(minutes)min",
-                source: first.source
-            )
-        }
     }
 
     private func buildPoints(
@@ -1024,25 +1291,33 @@ struct ProfessionalChartView: View {
 
         let timezone =
             TimeZone(
-                identifier: asset.timezone
+                identifier:
+                    asset.timezone
             )
-            ?? TimeZone(secondsFromGMT: 0)!
+            ?? TimeZone(
+                secondsFromGMT: 0
+            )!
 
-        var calendar = Calendar(
-            identifier: .gregorian
-        )
-        calendar.timeZone = timezone
+        var calendar =
+            Calendar(
+                identifier: .gregorian
+            )
+
+        calendar.timeZone =
+            timezone
 
         var result:
             [ProfessionalChartPoint] = []
 
         var cumulativePV = 0.0
         var cumulativeVolume = 0.0
+
         var currentSession:
             DateComponents?
 
         for index in bars.indices {
-            let bar = bars[index]
+            let bar =
+                bars[index]
 
             let session =
                 calendar.dateComponents(
@@ -1050,19 +1325,26 @@ struct ProfessionalChartView: View {
                     from: bar.timestamp
                 )
 
-            if currentSession != session {
-                currentSession = session
+            if currentSession
+                != session {
+
+                currentSession =
+                    session
+
                 cumulativePV = 0
                 cumulativeVolume = 0
             }
 
-            if let volume = bar.volume,
+            if let volume =
+                bar.volume,
                volume > 0 {
 
                 let typical =
-                    (bar.high
-                     + bar.low
-                     + bar.close)
+                    (
+                        bar.high
+                        + bar.low
+                        + bar.close
+                    )
                     / 3
 
                 cumulativePV +=
@@ -1094,6 +1376,7 @@ struct ProfessionalChartView: View {
 
             result.append(
                 ProfessionalChartPoint(
+                    index: index,
                     bar: bar,
                     sma20: sma20,
                     sma50: sma50,
@@ -1118,14 +1401,17 @@ struct ProfessionalChartView: View {
         }
 
         let values =
-            bars[start...endIndex]
-                .map {
-                    $0.close
-                }
+            bars[
+                start...endIndex
+            ]
+            .map {
+                $0.close
+            }
 
         return values.reduce(
             0,
             +
-        ) / Double(values.count)
+        )
+        / Double(values.count)
     }
 }
