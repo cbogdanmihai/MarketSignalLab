@@ -15,14 +15,34 @@ struct LabelCalibrationPolicy: Identifiable, Codable, Equatable, Sendable {
     let targetATRMultiple: Double?
     let stopATRMultiple: Double?
 
+    let shortFixedTargetPct: Double? = nil
+    let shortFixedStopPct: Double? = nil
+    let shortTargetATRMultiple: Double? = nil
+    let shortStopATRMultiple: Double? = nil
+
     func thresholds(
         atr14Pct: Double
-    ) -> (targetPct: Double, stopPct: Double) {
+    ) -> (
+        longTargetPct: Double,
+        longStopPct: Double,
+        shortTargetPct: Double,
+        shortStopPct: Double
+    ) {
         switch kind {
         case .fixed:
-            return (
-                fixedTargetPct ?? 0.0075,
+            let longTarget =
+                fixedTargetPct ?? 0.0075
+
+            let longStop =
                 fixedStopPct ?? 0.0035
+
+            return (
+                longTarget,
+                longStop,
+                shortFixedTargetPct
+                    ?? longTarget,
+                shortFixedStopPct
+                    ?? longStop
             )
 
         case .atrAdaptive:
@@ -31,9 +51,27 @@ struct LabelCalibrationPolicy: Identifiable, Codable, Equatable, Sendable {
                 0.0001
             )
 
+            let longTargetMultiple =
+                targetATRMultiple ?? 6.0
+
+            let longStopMultiple =
+                stopATRMultiple ?? 3.0
+
             return (
-                safeATR * (targetATRMultiple ?? 6.0),
-                safeATR * (stopATRMultiple ?? 3.0)
+                safeATR
+                    * longTargetMultiple,
+                safeATR
+                    * longStopMultiple,
+                safeATR
+                    * (
+                        shortTargetATRMultiple
+                        ?? longTargetMultiple
+                    ),
+                safeATR
+                    * (
+                        shortStopATRMultiple
+                        ?? longStopMultiple
+                    )
             )
         }
     }
@@ -138,6 +176,66 @@ struct LabelCalibrationPolicy: Identifiable, Codable, Equatable, Sendable {
             fixedStopPct: nil,
             targetATRMultiple: 8.0,
             stopATRMultiple: 4.0
+        ),
+        LabelCalibrationPolicy(
+            id: "atr_l8_4_s9_4",
+            name: "ATR L 8.0×/4.0× · S 9.0×/4.0×",
+            kind: .atrAdaptive,
+            horizonMinutes: 90,
+            fixedTargetPct: nil,
+            fixedStopPct: nil,
+            targetATRMultiple: 8.0,
+            stopATRMultiple: 4.0,
+            shortTargetATRMultiple: 9.0,
+            shortStopATRMultiple: 4.0
+        ),
+        LabelCalibrationPolicy(
+            id: "atr_l8_4_s10_4",
+            name: "ATR L 8.0×/4.0× · S 10.0×/4.0×",
+            kind: .atrAdaptive,
+            horizonMinutes: 90,
+            fixedTargetPct: nil,
+            fixedStopPct: nil,
+            targetATRMultiple: 8.0,
+            stopATRMultiple: 4.0,
+            shortTargetATRMultiple: 10.0,
+            shortStopATRMultiple: 4.0
+        ),
+        LabelCalibrationPolicy(
+            id: "atr_l8_4_s11_45",
+            name: "ATR L 8.0×/4.0× · S 11.0×/4.5×",
+            kind: .atrAdaptive,
+            horizonMinutes: 90,
+            fixedTargetPct: nil,
+            fixedStopPct: nil,
+            targetATRMultiple: 8.0,
+            stopATRMultiple: 4.0,
+            shortTargetATRMultiple: 11.0,
+            shortStopATRMultiple: 4.5
+        ),
+        LabelCalibrationPolicy(
+            id: "atr_l75_375_s9_4",
+            name: "ATR L 7.5×/3.75× · S 9.0×/4.0×",
+            kind: .atrAdaptive,
+            horizonMinutes: 90,
+            fixedTargetPct: nil,
+            fixedStopPct: nil,
+            targetATRMultiple: 7.5,
+            stopATRMultiple: 3.75,
+            shortTargetATRMultiple: 9.0,
+            shortStopATRMultiple: 4.0
+        ),
+        LabelCalibrationPolicy(
+            id: "atr_l75_375_s10_4",
+            name: "ATR L 7.5×/3.75× · S 10.0×/4.0×",
+            kind: .atrAdaptive,
+            horizonMinutes: 90,
+            fixedTargetPct: nil,
+            fixedStopPct: nil,
+            targetATRMultiple: 7.5,
+            stopATRMultiple: 3.75,
+            shortTargetATRMultiple: 10.0,
+            shortStopATRMultiple: 4.0
         )
     ]
 }
@@ -372,19 +470,21 @@ enum LabelCalibrationEngine {
 
         mutating func add(
             outcome: OutcomeResult,
-            targetPct: Double,
-            stopPct: Double
+            longTargetPct: Double,
+            longStopPct: Double,
+            shortTargetPct: Double,
+            shortStopPct: Double
         ) {
             samples += 1
 
             switch outcome.long {
             case .target:
                 longTargets += 1
-                longPayoffSum += targetPct
+                longPayoffSum += longTargetPct
 
             case .stop:
                 longStops += 1
-                longPayoffSum -= stopPct
+                longPayoffSum -= longStopPct
 
             case .timeout:
                 longTimeouts += 1
@@ -398,11 +498,11 @@ enum LabelCalibrationEngine {
             switch outcome.short {
             case .target:
                 shortTargets += 1
-                shortPayoffSum += targetPct
+                shortPayoffSum += shortTargetPct
 
             case .stop:
                 shortStops += 1
-                shortPayoffSum -= stopPct
+                shortPayoffSum -= shortStopPct
 
             case .timeout:
                 shortTimeouts += 1
@@ -631,18 +731,26 @@ enum LabelCalibrationEngine {
                         entryIndex: index,
                         horizonMinutes:
                             horizon,
-                        targetPct:
-                            thresholds.targetPct,
-                        stopPct:
-                            thresholds.stopPct
+                        longTargetPct:
+                            thresholds.longTargetPct,
+                        longStopPct:
+                            thresholds.longStopPct,
+                        shortTargetPct:
+                            thresholds.shortTargetPct,
+                        shortStopPct:
+                            thresholds.shortStopPct
                     )
 
                 accumulators[candidate.id]?.add(
                     outcome: outcome,
-                    targetPct:
-                        thresholds.targetPct,
-                    stopPct:
-                        thresholds.stopPct
+                    longTargetPct:
+                        thresholds.longTargetPct,
+                    longStopPct:
+                        thresholds.longStopPct,
+                    shortTargetPct:
+                        thresholds.shortTargetPct,
+                    shortStopPct:
+                        thresholds.shortStopPct
                 )
 
                 sessionCounts[candidate.id]?.samples += 1
@@ -680,8 +788,10 @@ enum LabelCalibrationEngine {
         bars: [MarketBar],
         entryIndex: Int,
         horizonMinutes: Int,
-        targetPct: Double,
-        stopPct: Double
+        longTargetPct: Double,
+        longStopPct: Double,
+        shortTargetPct: Double,
+        shortStopPct: Double
     ) -> OutcomeResult {
         let entry = bars[entryIndex].close
 
@@ -691,16 +801,16 @@ enum LabelCalibrationEngine {
         )
 
         let longTarget =
-            entry * (1 + targetPct)
+            entry * (1 + longTargetPct)
 
         let longStop =
-            entry * (1 - stopPct)
+            entry * (1 - longStopPct)
 
         let shortTarget =
-            entry * (1 - targetPct)
+            entry * (1 - shortTargetPct)
 
         let shortStop =
-            entry * (1 + stopPct)
+            entry * (1 + shortStopPct)
 
         var longOutcome:
             ResearchOutcome?
