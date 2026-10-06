@@ -4,6 +4,9 @@ import Charts
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
 
+    @State
+    private var showingAppInfo = false
+
     var body: some View {
         NavigationSplitView {
             List(
@@ -21,6 +24,15 @@ struct ContentView: View {
                 )
             ) {
                 Section("Provider") {
+                    Button {
+                        showingAppInfo = true
+                    } label: {
+                        Label(
+                            "App Info",
+                            systemImage: "info.circle"
+                        )
+                    }
+
                     Button {
                         Task {
                             await store.validateUniverse()
@@ -125,6 +137,12 @@ struct ContentView: View {
         }
         .task {
             await store.loadLocalBars()
+        }
+        .sheet(
+            isPresented: $showingAppInfo
+        ) {
+            AppInfoView()
+                .environmentObject(store)
         }
     }
 }
