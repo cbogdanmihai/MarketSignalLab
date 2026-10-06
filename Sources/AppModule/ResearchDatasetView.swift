@@ -455,8 +455,8 @@ struct ResearchDatasetView: View {
                                 .font(.caption.bold())
                                 .foregroundStyle(
                                     recommended.meetsAcceptanceBand
-                                    ? .green
-                                    : .orange
+                                    ? Color.green
+                                    : Color.orange
                                 )
                             }
                             .padding(
@@ -523,8 +523,8 @@ struct ResearchDatasetView: View {
                                     .font(.caption)
                                     .foregroundStyle(
                                         candidate.meetsAcceptanceBand
-                                        ? .green
-                                        : .secondary
+                                        ? Color.green
+                                        : Color.gray
                                     )
                                 }
                                 .padding(
