@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.3.5"
-    private let fallbackBuild = "15"
-    private let releaseName = "Phase 2B.5 — Label Calibration"
+    private let fallbackVersion = "0.4.0"
+    private let fallbackBuild = "16"
+    private let releaseName = "Frontend 1 — Professional Research Terminal"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -139,6 +139,13 @@ struct AppInfoView: View {
                     LabeledContent(
                         "Universe",
                         value: "\(store.assets.count) assets"
+                    )
+
+                    LabeledContent(
+                        "Custom tickers",
+                        value: String(
+                            store.customAssets.count
+                        )
                     )
 
                     LabeledContent(
