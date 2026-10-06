@@ -43,6 +43,9 @@ struct ContentView: View {
     @State
     private var showingAppInfo = false
 
+    @State
+    private var showingDebugConsole = false
+
     @AppStorage(
         TerminalDensity.storageKey
     )
@@ -127,6 +130,13 @@ struct ContentView: View {
                 $showingAppInfo
         ) {
             AppInfoView()
+                .environmentObject(store)
+        }
+        .sheet(
+            isPresented:
+                $showingDebugConsole
+        ) {
+            DebugConsoleView()
                 .environmentObject(store)
         }
         .dynamicTypeSize(
@@ -273,6 +283,17 @@ struct ContentView: View {
                         "Settings",
                         systemImage:
                             "gearshape"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    showingDebugConsole = true
+                } label: {
+                    Label(
+                        "Debug Console",
+                        systemImage:
+                            "terminal"
                     )
                 }
                 .buttonStyle(.plain)
