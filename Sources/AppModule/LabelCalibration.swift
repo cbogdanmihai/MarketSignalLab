@@ -387,7 +387,7 @@ enum LabelCalibrationEngine {
                     outcome.futureReturnPct
 
             case .ambiguous:
-                ambiguousRows += 1
+                break
             }
 
             switch outcome.short {
@@ -405,6 +405,12 @@ enum LabelCalibrationEngine {
                     outcome.futureReturnPct
 
             case .ambiguous:
+                break
+            }
+
+            if outcome.long == .ambiguous
+                || outcome.short == .ambiguous {
+
                 ambiguousRows += 1
             }
         }
@@ -466,25 +472,29 @@ enum LabelCalibrationEngine {
                 1
             )
 
-            let longStd = standardDeviation(
-                sessionLongTargetRates
-            )
+            let longStd =
+                LabelCalibrationEngine.standardDeviation(
+                    sessionLongTargetRates
+                )
 
-            let shortStd = standardDeviation(
-                sessionShortTargetRates
-            )
+            let shortStd =
+                LabelCalibrationEngine.standardDeviation(
+                    sessionShortTargetRates
+                )
 
-            let longBandScore = bandFit(
-                longTargetRate,
-                low: targetBandLow,
-                high: targetBandHigh
-            )
+            let longBandScore =
+                LabelCalibrationEngine.bandFit(
+                    longTargetRate,
+                    low: targetBandLow,
+                    high: targetBandHigh
+                )
 
-            let shortBandScore = bandFit(
-                shortTargetRate,
-                low: targetBandLow,
-                high: targetBandHigh
-            )
+            let shortBandScore =
+                LabelCalibrationEngine.bandFit(
+                    shortTargetRate,
+                    low: targetBandLow,
+                    high: targetBandHigh
+                )
 
             let balanceScore =
                 1 - min(
