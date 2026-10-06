@@ -15,6 +15,21 @@ struct BarStorageStats: Equatable, Sendable {
         previousClose: nil
     )
 
+    static func from(
+        bars: [MarketBar]
+    ) -> BarStorageStats {
+        BarStorageStats(
+            count: bars.count,
+            earliest: bars.first?.timestamp,
+            latest: bars.last?.timestamp,
+            latestClose: bars.last?.close,
+            previousClose:
+                bars.count >= 2
+                ? bars[bars.count - 2].close
+                : nil
+        )
+    }
+
     var latestChangePct: Double? {
         guard
             let latestClose,
@@ -171,15 +186,8 @@ actor PartitionedJSONBarRepository: BarRepository {
             timeframe: timeframe
         )
 
-        return BarStorageStats(
-            count: bars.count,
-            earliest: bars.first?.timestamp,
-            latest: bars.last?.timestamp,
-            latestClose: bars.last?.close,
-            previousClose:
-                bars.count >= 2
-                ? bars[bars.count - 2].close
-                : nil
+        return BarStorageStats.from(
+            bars: bars
         )
     }
 
