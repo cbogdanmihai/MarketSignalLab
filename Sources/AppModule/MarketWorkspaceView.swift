@@ -4,6 +4,9 @@ struct MarketWorkspaceView: View {
     @EnvironmentObject
     private var store: AppStore
 
+    @Environment(\.terminalDensityScale)
+    private var densityScale
+
     @State
     private var showingHistoricalData = false
 
@@ -52,7 +55,9 @@ struct MarketWorkspaceView: View {
                         asset: asset,
                         bars: store.bars
                     )
-                    .padding(14)
+                    .padding(
+            14 * densityScale
+        )
                     .background(
                         Color(
                             uiColor:
@@ -79,7 +84,9 @@ struct MarketWorkspaceView: View {
                     )
                 }
             }
-            .padding(18)
+            .padding(
+                18 * densityScale
+            )
         }
         .background(
             Color(
@@ -113,12 +120,7 @@ struct MarketWorkspaceView: View {
                 ) {
                     HStack(spacing: 8) {
                         Text(asset.symbol)
-                            .font(
-                                .system(
-                                    size: 28,
-                                    weight: .bold
-                                )
-                            )
+                            .font(.title.bold())
 
                         Text(
                             asset.assetClass.rawValue
@@ -162,12 +164,9 @@ struct MarketWorkspaceView: View {
                                 )
                         )
                         .font(
-                            .system(
-                                size: 26,
-                                weight: .semibold,
-                                design:
-                                    .rounded
-                            )
+                            .title2
+                                .weight(.semibold)
+                                .monospacedDigit()
                         )
                         .monospacedDigit()
 
@@ -235,6 +234,8 @@ struct MarketWorkspaceView: View {
                     )
                 }
                 .buttonStyle(.bordered)
+
+                TerminalDensityControl()
 
             } else {
                 Text("Market Workspace")
