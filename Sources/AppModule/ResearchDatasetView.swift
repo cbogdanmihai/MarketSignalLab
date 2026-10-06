@@ -294,18 +294,27 @@ struct ResearchDatasetView: View {
                             )
                             .foregroundStyle(.orange)
 
+                        } else if let recommended =
+                            store.labelCalibration?.recommended,
+                            recommended.meetsAcceptanceBand {
+
+                            Text(
+                                "LABEL POLICY READY: \(recommended.policy.name) passed the calibration acceptance band. The policy can be locked before Phase 2C model training."
+                            )
+                            .foregroundStyle(.green)
+
                         } else if min(
                             summary.longTargetRate,
                             summary.shortTargetRate
                         ) < 0.05 {
                             Text(
-                                "CAUTION: at least one target class is below 5%. We should calibrate the target/stop policy before training a production signal model."
+                                "CAUTION: the baseline label policy is sparse. Run Label calibration before training a signal model."
                             )
                             .foregroundStyle(.orange)
 
                         } else {
                             Text(
-                                "READY FOR BASELINE: there are enough independent sessions to run the first walk-forward baseline."
+                                "DATA READY: enough independent sessions exist. Run Label calibration before model training so test blocks stay untouched."
                             )
                             .foregroundStyle(.green)
                         }
