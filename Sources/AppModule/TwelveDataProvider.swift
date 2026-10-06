@@ -27,6 +27,8 @@ struct TwelveDataProvider: MarketDataProvider {
             throw MarketDataError.invalidURL
         }
 
+        try await TwelveDataRateLimiter.shared.waitForTurn()
+
         let (data, response) = try await URLSession.shared.data(from: url)
         let decoder = JSONDecoder()
         let providerError = try? decoder.decode(TwelveDataErrorResponse.self, from: data)
@@ -35,10 +37,26 @@ struct TwelveDataProvider: MarketDataProvider {
             if http.statusCode == 429 {
                 let headerValue = http.value(forHTTPHeaderField: "Retry-After")
                 let retryAfter = headerValue.flatMap(Double.init)
+                let cooldown = retryAfter ?? 65
+
+                await TwelveDataRateLimiter.shared.deferRequests(
+                    for: cooldown
+                )
 
                 throw MarketDataError.rateLimited(
                     message: providerError?.message ?? "HTTP 429 from Twelve Data.",
-                    retryAfter: retryAfter
+                    retryAfter: cooldown
+                )
+            }
+
+            if let creditsLeftText = http.value(
+                forHTTPHeaderField: "api-credits-left"
+            ),
+               let creditsLeft = Int(creditsLeftText),
+               creditsLeft <= 0 {
+
+                await TwelveDataRateLimiter.shared.deferRequests(
+                    for: 65
                 )
             }
 
