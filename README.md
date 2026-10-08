@@ -127,3 +127,35 @@ Current release:
 - Release: Phase 2C.1 — Baseline + Data Operations
 
 The project remains signal/research only. No broker execution is implemented.
+
+
+## Phase 2C.3 — Regime-aware baseline
+
+The probability-calibrated baseline exposed a strong directional regime drift: SHORT target prevalence fell materially across later development folds while the model continued to overpredict short-event probability.
+
+To address this without increasing model complexity, the logistic baseline now adds six causal multi-session regime features:
+
+- current-session return from the first eligible research row;
+- return from the previous session close;
+- previous-session return;
+- previous 3-session return;
+- previous 5-session return;
+- prior 3-session realized-volatility average.
+
+The model now uses 22 causal features in total.
+
+These features use only information available at or before each row timestamp. No future labels are used.
+
+## Sealed final holdout
+
+Because model architecture is being refined after inspecting development walk-forward test results, the remaining sessions after the third development fold are now explicitly surfaced as a sealed final holdout.
+
+The sealed holdout is not used for:
+
+- label calibration;
+- feature design;
+- probability calibration;
+- threshold selection;
+- development model comparison.
+
+It should remain unopened until the architecture and signal gate are frozen.
