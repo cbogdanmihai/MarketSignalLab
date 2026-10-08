@@ -1978,76 +1978,131 @@ final class AppStore: ObservableObject {
             )
         }
 
+        let selectedSymbol =
+            selectedAsset?.symbol
+
+        let selectedLatestClose =
+            bars.last?.close
+
+        let summary =
+            researchSummary
+
+        let calibration =
+            labelCalibration
+
+        let recommendedCalibration =
+            calibration?.recommended
+
+        let lockedPolicy =
+            selectedLockedLabelPolicy
+
+        let baseline =
+            baselineResult
+
+        let recentEvents =
+            Array(
+                diagnosticEvents
+                    .suffix(100)
+            )
+
         let snapshot = DiagnosticsSnapshot(
             generatedAt: Date(),
             appVersion: shortVersion,
             buildVersion: buildVersion,
             provider: "TwelveData",
-            selectedSymbol: selectedAsset?.symbol,
-            selectedStoredBars: storageStats.count,
-            selectedEarliestBar: storageStats.earliest,
-            selectedLatestBar: storageStats.latest,
-            selectedLatestClose: bars.last?.close,
-            systemMessage: status.message,
-            historicalIsRunning: isDownloadingHistory,
-            historicalCompletedChunks: historyCompletedChunks,
-            historicalTotalChunks: historyTotalChunks,
-            historicalBarsReceived: historyBarsSaved,
-            historicalMessage: historyMessage,
-            researchRowCount: researchSummary?.rowCount ?? 0,
-            researchFeatureCount: researchSummary?.featureCount ?? 0,
-            researchFoldCount: researchFolds.count,
-            researchLongTargetRate: researchSummary?.longTargetRate,
-            researchShortTargetRate: researchSummary?.shortTargetRate,
-            researchMessage: researchMessage,
+            selectedSymbol:
+                selectedSymbol,
+            selectedStoredBars:
+                storageStats.count,
+            selectedEarliestBar:
+                storageStats.earliest,
+            selectedLatestBar:
+                storageStats.latest,
+            selectedLatestClose:
+                selectedLatestClose,
+            systemMessage:
+                status.message,
+            historicalIsRunning:
+                isDownloadingHistory,
+            historicalCompletedChunks:
+                historyCompletedChunks,
+            historicalTotalChunks:
+                historyTotalChunks,
+            historicalBarsReceived:
+                historyBarsSaved,
+            historicalMessage:
+                historyMessage,
+            researchRowCount:
+                summary?.rowCount ?? 0,
+            researchFeatureCount:
+                summary?.featureCount ?? 0,
+            researchFoldCount:
+                researchFolds.count,
+            researchLongTargetRate:
+                summary?.longTargetRate,
+            researchShortTargetRate:
+                summary?.shortTargetRate,
+            researchMessage:
+                researchMessage,
             labelCalibrationCandidateCount:
-                labelCalibration?.candidates.count ?? 0,
+                calibration?.candidates.count
+                ?? 0,
             labelCalibrationRecommendedPolicy:
-                labelCalibration?.recommended?.policy.name,
+                recommendedCalibration?
+                    .policy
+                    .name,
             labelCalibrationAccepted:
-                labelCalibration?.recommended?.meetsAcceptanceBand,
+                recommendedCalibration?
+                    .meetsAcceptanceBand,
             labelCalibrationLongTargetRate:
-                labelCalibration?.recommended?.longTargetRate,
+                recommendedCalibration?
+                    .longTargetRate,
             labelCalibrationShortTargetRate:
-                labelCalibration?.recommended?.shortTargetRate,
+                recommendedCalibration?
+                    .shortTargetRate,
             labelCalibrationMessage:
                 labelCalibrationMessage,
             labelCalibrationCandidates:
-                labelCalibration?.candidates ?? [],
+                calibration?.candidates
+                ?? [],
             lockedLabelPolicyName:
-                selectedLockedLabelPolicy?.policy.name,
+                lockedPolicy?.policy.name,
             lockedLabelPolicyID:
-                selectedLockedLabelPolicy?.policy.id,
+                lockedPolicy?.policy.id,
             lockedLabelPolicyAt:
-                selectedLockedLabelPolicy?.lockedAt,
+                lockedPolicy?.lockedAt,
             researchUsesLockedPolicy:
-                researchSummary?.usesLockedPolicy
+                summary?.usesLockedPolicy
                 ?? false,
             baselineAvailable:
-                baselineResult != nil,
+                baseline != nil,
             baselineCandidateCount:
                 baselineCandidates.count,
             baselineRecommendedVariant:
-                baselineResult?
-                    .variant
-                    .title,
+                baseline?.variant.title,
             baselinePassesInitialGate:
-                baselineResult?
+                baseline?
                     .passesInitialGate,
             baselineMeanLongSkill:
-                baselineResult?
+                baseline?
                     .meanLongSkill,
             baselineMeanShortSkill:
-                baselineResult?
+                baseline?
                     .meanShortSkill,
             baselineMessage:
                 baselineMessage,
-            availableCount: availableCount,
-            restrictedCount: restrictedCount,
-            unavailableCount: unavailableCount,
-            rateLimitedCount: rateLimitedCount,
-            assets: assetSnapshots,
-            events: Array(diagnosticEvents.suffix(100))
+            availableCount:
+                availableCount,
+            restrictedCount:
+                restrictedCount,
+            unavailableCount:
+                unavailableCount,
+            rateLimitedCount:
+                rateLimitedCount,
+            assets:
+                assetSnapshots,
+            events:
+                recentEvents
         )
 
         do {
@@ -2068,7 +2123,11 @@ final class AppStore: ObservableObject {
             let url = FileManager.default.temporaryDirectory
                 .appendingPathComponent(fileName)
 
-            try data.write(to: url, options: [.atomic])
+            try data.write(
+                to: url,
+                options:
+                    Data.WritingOptions.atomic
+            )
 
             diagnosticsURL = url
             status.message = "Diagnostics ready to share."
