@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.7.3"
-    private let fallbackBuild = "35"
-    private let releaseName = "Phase 2C.3 — Regime-Aware Baseline + Sealed Holdout"
+    private let fallbackVersion = "0.7.4"
+    private let fallbackBuild = "36"
+    private let releaseName = "Phase 2C.4 — Model Comparison + Market Context"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -220,6 +220,25 @@ struct AppInfoView: View {
                                 == true
                                 ? "PASS"
                                 : "REVIEW"
+                            )
+                    )
+
+                    LabeledContent(
+                        "Baseline variant",
+                        value:
+                            store.baselineResult?
+                                .variant
+                                .title
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "Baseline candidates",
+                        value:
+                            String(
+                                store
+                                    .baselineCandidates
+                                    .count
                             )
                     )
 
