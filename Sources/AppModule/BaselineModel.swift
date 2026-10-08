@@ -9,6 +9,43 @@ enum BaselineDirection:
     case short = "SHORT"
 }
 
+enum BaselineFeatureVariant:
+    String,
+    Codable,
+    Sendable,
+    CaseIterable {
+
+    case core16 = "core16"
+    case selfRegime22 = "self_regime22"
+    case marketContext28 = "market_context28"
+
+    var title: String {
+        switch self {
+        case .core16:
+            return "Core 16"
+
+        case .selfRegime22:
+            return "Self Regime 22"
+
+        case .marketContext28:
+            return "Market Context 28"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .core16:
+            return "Original causal intraday features"
+
+        case .selfRegime22:
+            return "Core + six self-regime features"
+
+        case .marketContext28:
+            return "Core + SPY / IWM / VIXY context"
+        }
+    }
+}
+
 struct BaselineClassificationMetrics:
     Codable,
     Sendable {
@@ -104,14 +141,21 @@ struct BaselineFoldResult:
 
 struct BaselineRunResult:
     Codable,
-    Sendable {
+    Sendable,
+    Identifiable {
 
+    let variant: BaselineFeatureVariant
     let symbol: String
     let generatedAt: Date
     let lockedPolicyID: String
     let lockedPolicyName: String
     let featureNames: [String]
+    let contextCoverage: Double
     let folds: [BaselineFoldResult]
+
+    var id: String {
+        variant.rawValue
+    }
 
     var longFolds:
         [BaselineFoldResult] {
@@ -161,6 +205,13 @@ struct BaselineRunResult:
         )
     }
 
+    var combinedDevelopmentScore: Double {
+        min(
+            meanLongSkill,
+            meanShortSkill
+        )
+    }
+
     var passesInitialGate: Bool {
         guard
             longFolds.count >= 3,
@@ -188,8 +239,50 @@ struct BaselineRunResult:
     }
 }
 
+struct BaselineExperimentResult:
+    Codable,
+    Sendable {
+
+    let symbol: String
+    let generatedAt: Date
+    let candidates: [BaselineRunResult]
+    let recommendedVariant:
+        BaselineFeatureVariant?
+
+    var recommended:
+        BaselineRunResult? {
+
+        guard let recommendedVariant else {
+            return nil
+        }
+
+        return candidates.first {
+            $0.variant
+                == recommendedVariant
+        }
+    }
+
+    var bestLong:
+        BaselineRunResult? {
+
+        candidates.max {
+            $0.meanLongSkill
+                < $1.meanLongSkill
+        }
+    }
+
+    var bestShort:
+        BaselineRunResult? {
+
+        candidates.max {
+            $0.meanShortSkill
+                < $1.meanShortSkill
+        }
+    }
+}
+
 enum BaselineModelEngine {
-    static let featureNames = [
+    static let coreFeatureNames = [
         "minuteOfSession",
         "sessionProgress",
         "return1",
@@ -205,7 +298,10 @@ enum BaselineModelEngine {
         "distanceToSMA50",
         "distanceToSessionHigh",
         "distanceToSessionLow",
-        "distanceToSessionVWAP",
+        "distanceToSessionVWAP"
+    ]
+
+    static let selfRegimeFeatureNames = [
         "sessionReturn",
         "returnFromPreviousSession",
         "previousSessionReturn",
@@ -214,53 +310,135 @@ enum BaselineModelEngine {
         "prior3SessionVolatility"
     ]
 
-    static func run(
+    static let marketContextFeatureNames = [
+        "spyReturn5",
+        "spyReturn15",
+        "spyReturn60",
+        "spySessionReturn",
+        "iwmReturn5",
+        "iwmReturn15",
+        "iwmReturn60",
+        "iwmSessionReturn",
+        "vixyReturn5",
+        "vixyReturn15",
+        "vixyReturn60",
+        "vixySessionReturn"
+    ]
+
+    static func runExperiment(
         symbol: String,
         lockedPolicy:
             LockedLabelPolicyRecord,
         rows: [ResearchRow],
-        folds: [WalkForwardFold]
-    ) -> BaselineRunResult {
-        var results:
-            [BaselineFoldResult] = []
-
-        let regimeFeatures =
-            buildRegimeFeatures(
+        folds: [WalkForwardFold],
+        contextBars:
+            [String: [MarketBar]]
+    ) -> BaselineExperimentResult {
+        let selfRegime =
+            buildSelfRegimeFeatures(
                 rows: rows
             )
 
-        for fold in folds {
-            for direction in [
-                BaselineDirection.long,
-                BaselineDirection.short
-            ] {
-                if let result =
-                    runFold(
-                        fold: fold,
-                        direction:
-                            direction,
-                        rows: rows,
-                        regimeFeatures:
-                            regimeFeatures
-                    ) {
+        let marketContext =
+            buildMarketContextFeatures(
+                rows: rows,
+                contextBars:
+                    contextBars
+            )
 
-                    results.append(
-                        result
-                    )
-                }
-            }
+        let marketCoverage =
+            rows.isEmpty
+            ? 0
+            : Double(
+                marketContext.count
+            )
+            / Double(rows.count)
+
+        var candidates:
+            [BaselineRunResult] = []
+
+        candidates.append(
+            run(
+                variant: .core16,
+                symbol: symbol,
+                lockedPolicy:
+                    lockedPolicy,
+                rows: rows,
+                folds: folds,
+                selfRegime:
+                    [:],
+                marketContext:
+                    [:],
+                contextCoverage: 1
+            )
+        )
+
+        candidates.append(
+            run(
+                variant:
+                    .selfRegime22,
+                symbol: symbol,
+                lockedPolicy:
+                    lockedPolicy,
+                rows: rows,
+                folds: folds,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    [:],
+                contextCoverage: 1
+            )
+        )
+
+        if marketCoverage >= 0.70 {
+            candidates.append(
+                run(
+                    variant:
+                        .marketContext28,
+                    symbol: symbol,
+                    lockedPolicy:
+                        lockedPolicy,
+                    rows: rows,
+                    folds: folds,
+                    selfRegime:
+                        [:],
+                    marketContext:
+                        marketContext,
+                    contextCoverage:
+                        marketCoverage
+                )
+            )
         }
 
-        return BaselineRunResult(
+        let recommended =
+            candidates.max {
+                if $0.combinedDevelopmentScore
+                    == $1.combinedDevelopmentScore {
+
+                    return (
+                        $0.meanLongSkill
+                        + $0.meanShortSkill
+                    )
+                    < (
+                        $1.meanLongSkill
+                        + $1.meanShortSkill
+                    )
+                }
+
+                return $0
+                    .combinedDevelopmentScore
+                    < $1
+                        .combinedDevelopmentScore
+            }
+
+        return BaselineExperimentResult(
             symbol: symbol,
             generatedAt: Date(),
-            lockedPolicyID:
-                lockedPolicy.policy.id,
-            lockedPolicyName:
-                lockedPolicy.policy.name,
-            featureNames:
-                featureNames,
-            folds: results
+            candidates:
+                candidates,
+            recommendedVariant:
+                recommended?
+                    .variant
         )
     }
 
@@ -345,12 +523,94 @@ enum BaselineModelEngine {
         }
     }
 
+    private static func run(
+        variant:
+            BaselineFeatureVariant,
+        symbol: String,
+        lockedPolicy:
+            LockedLabelPolicyRecord,
+        rows: [ResearchRow],
+        folds: [WalkForwardFold],
+        selfRegime:
+            [String: [Double]],
+        marketContext:
+            [String: [Double]],
+        contextCoverage: Double
+    ) -> BaselineRunResult {
+        var results:
+            [BaselineFoldResult] = []
+
+        for fold in folds {
+            for direction in [
+                BaselineDirection.long,
+                BaselineDirection.short
+            ] {
+                if let result =
+                    runFold(
+                        fold: fold,
+                        direction:
+                            direction,
+                        rows: rows,
+                        variant: variant,
+                        selfRegime:
+                            selfRegime,
+                        marketContext:
+                            marketContext
+                    ) {
+
+                    results.append(
+                        result
+                    )
+                }
+            }
+        }
+
+        return BaselineRunResult(
+            variant: variant,
+            symbol: symbol,
+            generatedAt: Date(),
+            lockedPolicyID:
+                lockedPolicy.policy.id,
+            lockedPolicyName:
+                lockedPolicy.policy.name,
+            featureNames:
+                featureNames(
+                    for: variant
+                ),
+            contextCoverage:
+                contextCoverage,
+            folds: results
+        )
+    }
+
+    private static func featureNames(
+        for variant:
+            BaselineFeatureVariant
+    ) -> [String] {
+        switch variant {
+        case .core16:
+            return coreFeatureNames
+
+        case .selfRegime22:
+            return coreFeatureNames
+                + selfRegimeFeatureNames
+
+        case .marketContext28:
+            return coreFeatureNames
+                + marketContextFeatureNames
+        }
+    }
+
     private static func runFold(
         fold: WalkForwardFold,
         direction:
             BaselineDirection,
         rows: [ResearchRow],
-        regimeFeatures:
+        variant:
+            BaselineFeatureVariant,
+        selfRegime:
+            [String: [Double]],
+        marketContext:
             [String: [Double]]
     ) -> BaselineFoldResult? {
         let trainRows =
@@ -381,24 +641,33 @@ enum BaselineModelEngine {
             examples(
                 rows: trainRows,
                 direction: direction,
-                regimeFeatures:
-                    regimeFeatures
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
             )
 
         let rawValidation =
             examples(
                 rows: validationRows,
                 direction: direction,
-                regimeFeatures:
-                    regimeFeatures
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
             )
 
         let rawTest =
             examples(
                 rows: testRows,
                 direction: direction,
-                regimeFeatures:
-                    regimeFeatures
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
             )
 
         guard
@@ -590,7 +859,11 @@ enum BaselineModelEngine {
         rows: [ResearchRow],
         direction:
             BaselineDirection,
-        regimeFeatures:
+        variant:
+            BaselineFeatureVariant,
+        selfRegime:
+            [String: [Double]],
+        marketContext:
             [String: [Double]]
     ) -> [Example] {
         rows.compactMap { row in
@@ -613,19 +886,42 @@ enum BaselineModelEngine {
                 return nil
             }
 
+            let extras:
+                [Double]
+
+            switch variant {
+            case .core16:
+                extras = []
+
+            case .selfRegime22:
+                guard
+                    let values =
+                        selfRegime[
+                            row.id
+                        ]
+                else {
+                    return nil
+                }
+
+                extras = values
+
+            case .marketContext28:
+                guard
+                    let values =
+                        marketContext[
+                            row.id
+                        ]
+                else {
+                    return nil
+                }
+
+                extras = values
+            }
+
             return Example(
                 x:
-                    features(
-                        row,
-                        regime:
-                            regimeFeatures[
-                                row.id
-                            ]
-                            ?? Array(
-                                repeating: 0,
-                                count: 6
-                            )
-                    ),
+                    coreFeatures(row)
+                    + extras,
                 y:
                     outcome == .target
                     ? 1
@@ -634,9 +930,8 @@ enum BaselineModelEngine {
         }
     }
 
-    private static func features(
-        _ row: ResearchRow,
-        regime: [Double]
+    private static func coreFeatures(
+        _ row: ResearchRow
     ) -> [Double] {
         [
             Double(
@@ -659,10 +954,9 @@ enum BaselineModelEngine {
             row.distanceToSessionVWAP
                 ?? 0
         ]
-        + regime
     }
 
-    private static func buildRegimeFeatures(
+    private static func buildSelfRegimeFeatures(
         rows: [ResearchRow]
     ) -> [String: [Double]] {
         let grouped =
@@ -679,12 +973,11 @@ enum BaselineModelEngine {
 
         let orderedSessions =
             grouped.values
-                .compactMap { sessionRows in
-                    sessionRows
-                        .sorted {
-                            $0.timestamp
-                                < $1.timestamp
-                        }
+                .map {
+                    $0.sorted {
+                        $0.timestamp
+                            < $1.timestamp
+                    }
                 }
                 .sorted {
                     ($0.first?.timestamp
@@ -805,6 +1098,183 @@ enum BaselineModelEngine {
             priorVolatility.append(
                 sessionVolatility
             )
+        }
+
+        return result
+    }
+
+    private static func buildMarketContextFeatures(
+        rows: [ResearchRow],
+        contextBars:
+            [String: [MarketBar]]
+    ) -> [String: [Double]] {
+        let requiredSymbols = [
+            "SPY",
+            "IWM",
+            "VIXY"
+        ]
+
+        var featureBySymbol:
+            [String: [Date: [Double]]] = [:]
+
+        for symbol in requiredSymbols {
+            guard
+                let bars =
+                    contextBars[symbol],
+                !bars.isEmpty
+            else {
+                return [:]
+            }
+
+            featureBySymbol[symbol] =
+                marketFeaturesByTimestamp(
+                    bars: bars
+                )
+        }
+
+        var result:
+            [String: [Double]] = [:]
+
+        for row in rows {
+            guard
+                let spy =
+                    featureBySymbol["SPY"]?[
+                        row.timestamp
+                    ],
+                let iwm =
+                    featureBySymbol["IWM"]?[
+                        row.timestamp
+                    ],
+                let vixy =
+                    featureBySymbol["VIXY"]?[
+                        row.timestamp
+                    ]
+            else {
+                continue
+            }
+
+            result[row.id] =
+                spy + iwm + vixy
+        }
+
+        return result
+    }
+
+    private static func marketFeaturesByTimestamp(
+        bars: [MarketBar]
+    ) -> [Date: [Double]] {
+        let timezone =
+            TimeZone(
+                identifier:
+                    "America/New_York"
+            )
+            ?? .current
+
+        var calendar =
+            Calendar(
+                identifier:
+                    .gregorian
+            )
+
+        calendar.timeZone =
+            timezone
+
+        let regularBars =
+            bars.filter { bar in
+                let components =
+                    calendar.dateComponents(
+                        [.hour, .minute],
+                        from:
+                            bar.timestamp
+                    )
+
+                guard
+                    let hour =
+                        components.hour,
+                    let minute =
+                        components.minute
+                else {
+                    return false
+                }
+
+                let minuteOfDay =
+                    hour * 60 + minute
+
+                return minuteOfDay >= 570
+                    && minuteOfDay < 960
+            }
+            .sorted {
+                $0.timestamp
+                    < $1.timestamp
+            }
+
+        let grouped =
+            Dictionary(
+                grouping:
+                    regularBars
+            ) { bar in
+                let components =
+                    calendar.dateComponents(
+                        [.year, .month, .day],
+                        from:
+                            bar.timestamp
+                    )
+
+                return "\(components.year ?? 0)-\(components.month ?? 0)-\(components.day ?? 0)"
+            }
+
+        var result:
+            [Date: [Double]] = [:]
+
+        for session in grouped.values {
+            let ordered =
+                session.sorted {
+                    $0.timestamp
+                        < $1.timestamp
+                }
+
+            guard
+                let first =
+                    ordered.first
+            else {
+                continue
+            }
+
+            for index in ordered.indices {
+                guard index >= 60 else {
+                    continue
+                }
+
+                let current =
+                    ordered[index]
+
+                result[
+                    current.timestamp
+                ] = [
+                    safeReturn(
+                        current.close,
+                        ordered[
+                            index - 5
+                        ].close
+                    ),
+                    safeReturn(
+                        current.close,
+                        ordered[
+                            index - 15
+                        ].close
+                    ),
+                    safeReturn(
+                        current.close,
+                        ordered[
+                            index - 60
+                        ].close
+                    ),
+                    safeReturn(
+                        current.close,
+                        first.close
+                    )
+                ]
+            }
         }
 
         return result
