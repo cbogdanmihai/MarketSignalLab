@@ -176,3 +176,20 @@ The market-context candidate uses, for each context symbol, current-session retu
 The recommended candidate is selected using the weakest-side development Brier skill, with average skill as a tie-breaker. The sealed holdout remains untouched.
 
 If Market Context is unavailable, download matching SPY / IWM / VIXY 1-minute history via Historical Data → Bulk History and rerun the baseline experiment.
+
+
+## One-tap market context preparation
+
+Research now exposes **Prepare Context + Retrain** for the selected symbol.
+
+The action:
+
+- derives the required time range from the selected research dataset;
+- adds one calendar day of warmup before the first research row;
+- downloads only SPY, IWM and VIXY rather than the entire context universe;
+- skips symbols whose local coverage already spans the required interval;
+- uses the shared Twelve Data rate limiter;
+- reports per-asset download progress in Research;
+- automatically reruns the Core 16 / Self Regime 22 / Market Context 28 comparison after the context download finishes.
+
+This avoids the previous ambiguity where the generic Context bulk scope did not include SPY because SPY is a tradeable asset.
