@@ -864,9 +864,9 @@ struct ResearchHubView: View {
 
     private var baselineSection: some View {
         ResearchCard(
-            title: "Phase 2C.3 · Regime-Aware Baseline",
+            title: "Phase 2C.4 · Baseline Model Comparison",
             subtitle:
-                "22 causal features · validation-only probability calibration · development walk-forward tests"
+                "Core vs self-regime vs SPY/IWM/VIXY context · validation-only calibration · sealed holdout untouched"
         ) {
             VStack(
                 alignment: .leading,
@@ -974,6 +974,188 @@ struct ResearchHubView: View {
                             subtitle:
                                 "Positive skill both sides"
                         )
+
+                        MetricTile(
+                            title:
+                                "Recommended",
+                            value:
+                                result
+                                    .variant
+                                    .title,
+                            subtitle:
+                                "\(result.featureNames.count) features"
+                        )
+                    }
+
+                    if !store
+                        .baselineCandidates
+                        .isEmpty {
+
+                        DisclosureGroup(
+                            "Model candidate comparison"
+                        ) {
+                            VStack(spacing: 8) {
+                                ForEach(
+                                    store
+                                        .baselineCandidates
+                                ) { candidate in
+                                    HStack(
+                                        spacing: 14
+                                    ) {
+                                        VStack(
+                                            alignment:
+                                                .leading,
+                                            spacing: 2
+                                        ) {
+                                            HStack {
+                                                Text(
+                                                    candidate
+                                                        .variant
+                                                        .title
+                                                )
+                                                .font(
+                                                    .caption
+                                                        .bold()
+                                                )
+
+                                                if candidate
+                                                    .variant
+                                                    == result
+                                                        .variant {
+
+                                                    Text(
+                                                        "RECOMMENDED"
+                                                    )
+                                                    .font(
+                                                        .caption2
+                                                            .bold()
+                                                    )
+                                                    .foregroundStyle(
+                                                        .blue
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                candidate
+                                                    .variant
+                                                    .subtitle
+                                            )
+                                            .font(.caption2)
+                                            .foregroundStyle(
+                                                .secondary
+                                            )
+                                        }
+
+                                        Spacer()
+
+                                        VStack(
+                                            alignment:
+                                                .trailing,
+                                            spacing: 1
+                                        ) {
+                                            Text("LONG")
+                                                .font(
+                                                    .caption2
+                                                )
+                                                .foregroundStyle(
+                                                    .secondary
+                                                )
+
+                                            Text(
+                                                percent(
+                                                    candidate
+                                                        .meanLongSkill
+                                                )
+                                            )
+                                            .font(
+                                                .caption
+                                                    .bold()
+                                            )
+                                            .monospacedDigit()
+                                        }
+
+                                        VStack(
+                                            alignment:
+                                                .trailing,
+                                            spacing: 1
+                                        ) {
+                                            Text("SHORT")
+                                                .font(
+                                                    .caption2
+                                                )
+                                                .foregroundStyle(
+                                                    .secondary
+                                                )
+
+                                            Text(
+                                                percent(
+                                                    candidate
+                                                        .meanShortSkill
+                                                )
+                                            )
+                                            .font(
+                                                .caption
+                                                    .bold()
+                                            )
+                                            .monospacedDigit()
+                                        }
+
+                                        VStack(
+                                            alignment:
+                                                .trailing,
+                                            spacing: 1
+                                        ) {
+                                            Text("Coverage")
+                                                .font(
+                                                    .caption2
+                                                )
+                                                .foregroundStyle(
+                                                    .secondary
+                                                )
+
+                                            Text(
+                                                percent(
+                                                    candidate
+                                                        .contextCoverage
+                                                )
+                                            )
+                                            .font(
+                                                .caption
+                                            )
+                                            .monospacedDigit()
+                                        }
+
+                                        Text(
+                                            candidate
+                                                .passesInitialGate
+                                            ? "PASS"
+                                            : "REVIEW"
+                                        )
+                                        .font(
+                                            .caption
+                                                .bold()
+                                        )
+                                        .foregroundStyle(
+                                            candidate
+                                                .passesInitialGate
+                                            ? Color.green
+                                            : Color.orange
+                                        )
+                                    }
+                                    .padding(
+                                        .vertical,
+                                        4
+                                    )
+
+                                    Divider()
+                                }
+                            }
+                            .padding(
+                                .top,
+                                8
+                            )
+                        }
                     }
 
                     DisclosureGroup(
