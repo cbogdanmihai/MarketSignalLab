@@ -205,7 +205,13 @@ enum BaselineModelEngine {
         "distanceToSMA50",
         "distanceToSessionHigh",
         "distanceToSessionLow",
-        "distanceToSessionVWAP"
+        "distanceToSessionVWAP",
+        "sessionReturn",
+        "returnFromPreviousSession",
+        "previousSessionReturn",
+        "previous3SessionReturn",
+        "previous5SessionReturn",
+        "prior3SessionVolatility"
     ]
 
     static func run(
@@ -218,6 +224,11 @@ enum BaselineModelEngine {
         var results:
             [BaselineFoldResult] = []
 
+        let regimeFeatures =
+            buildRegimeFeatures(
+                rows: rows
+            )
+
         for fold in folds {
             for direction in [
                 BaselineDirection.long,
@@ -228,7 +239,9 @@ enum BaselineModelEngine {
                         fold: fold,
                         direction:
                             direction,
-                        rows: rows
+                        rows: rows,
+                        regimeFeatures:
+                            regimeFeatures
                     ) {
 
                     results.append(
@@ -336,7 +349,9 @@ enum BaselineModelEngine {
         fold: WalkForwardFold,
         direction:
             BaselineDirection,
-        rows: [ResearchRow]
+        rows: [ResearchRow],
+        regimeFeatures:
+            [String: [Double]]
     ) -> BaselineFoldResult? {
         let trainRows =
             rows.filter {
@@ -365,19 +380,25 @@ enum BaselineModelEngine {
         let rawTrain =
             examples(
                 rows: trainRows,
-                direction: direction
+                direction: direction,
+                regimeFeatures:
+                    regimeFeatures
             )
 
         let rawValidation =
             examples(
                 rows: validationRows,
-                direction: direction
+                direction: direction,
+                regimeFeatures:
+                    regimeFeatures
             )
 
         let rawTest =
             examples(
                 rows: testRows,
-                direction: direction
+                direction: direction,
+                regimeFeatures:
+                    regimeFeatures
             )
 
         guard
@@ -568,7 +589,9 @@ enum BaselineModelEngine {
     private static func examples(
         rows: [ResearchRow],
         direction:
-            BaselineDirection
+            BaselineDirection,
+        regimeFeatures:
+            [String: [Double]]
     ) -> [Example] {
         rows.compactMap { row in
             let outcome:
@@ -591,7 +614,18 @@ enum BaselineModelEngine {
             }
 
             return Example(
-                x: features(row),
+                x:
+                    features(
+                        row,
+                        regime:
+                            regimeFeatures[
+                                row.id
+                            ]
+                            ?? Array(
+                                repeating: 0,
+                                count: 6
+                            )
+                    ),
                 y:
                     outcome == .target
                     ? 1
@@ -601,7 +635,8 @@ enum BaselineModelEngine {
     }
 
     private static func features(
-        _ row: ResearchRow
+        _ row: ResearchRow,
+        regime: [Double]
     ) -> [Double] {
         [
             Double(
@@ -624,6 +659,218 @@ enum BaselineModelEngine {
             row.distanceToSessionVWAP
                 ?? 0
         ]
+        + regime
+    }
+
+    private static func buildRegimeFeatures(
+        rows: [ResearchRow]
+    ) -> [String: [Double]] {
+        let grouped =
+            Dictionary(
+                grouping:
+                    rows.sorted {
+                        $0.timestamp
+                            < $1.timestamp
+                    },
+                by: {
+                    $0.sessionKey
+                }
+            )
+
+        let orderedSessions =
+            grouped.values
+                .compactMap { sessionRows in
+                    sessionRows
+                        .sorted {
+                            $0.timestamp
+                                < $1.timestamp
+                        }
+                }
+                .sorted {
+                    ($0.first?.timestamp
+                        ?? .distantPast)
+                    < ($1.first?.timestamp
+                        ?? .distantPast)
+                }
+
+        var priorCloses:
+            [Double] = []
+
+        var priorVolatility:
+            [Double] = []
+
+        var result:
+            [String: [Double]] = [:]
+
+        for sessionRows in
+            orderedSessions {
+
+            guard
+                let first =
+                    sessionRows.first,
+                let last =
+                    sessionRows.last
+            else {
+                continue
+            }
+
+            let previousClose =
+                priorCloses.last
+
+            let previousSessionReturn:
+                Double
+
+            if priorCloses.count >= 2 {
+                previousSessionReturn =
+                    safeReturn(
+                        priorCloses[
+                            priorCloses.count - 1
+                        ],
+                        priorCloses[
+                            priorCloses.count - 2
+                        ]
+                    )
+
+            } else {
+                previousSessionReturn = 0
+            }
+
+            let previous3SessionReturn =
+                multiSessionReturn(
+                    closes:
+                        priorCloses,
+                    transitions: 3
+                )
+
+            let previous5SessionReturn =
+                multiSessionReturn(
+                    closes:
+                        priorCloses,
+                    transitions: 5
+                )
+
+            let prior3Volatility =
+                averageSuffix(
+                    priorVolatility,
+                    count: 3
+                )
+
+            for row in sessionRows {
+                let sessionReturn =
+                    safeReturn(
+                        row.close,
+                        first.close
+                    )
+
+                let fromPreviousSession =
+                    previousClose
+                    .map {
+                        safeReturn(
+                            row.close,
+                            $0
+                        )
+                    }
+                    ?? 0
+
+                result[row.id] = [
+                    sessionReturn,
+                    fromPreviousSession,
+                    previousSessionReturn,
+                    previous3SessionReturn,
+                    previous5SessionReturn,
+                    prior3Volatility
+                ]
+            }
+
+            priorCloses.append(
+                last.close
+            )
+
+            let sessionVolatility =
+                sessionRows
+                    .map {
+                        $0.realizedVol20
+                    }
+                    .reduce(
+                        0,
+                        +
+                    )
+                / Double(
+                    max(
+                        sessionRows.count,
+                        1
+                    )
+                )
+
+            priorVolatility.append(
+                sessionVolatility
+            )
+        }
+
+        return result
+    }
+
+    private static func multiSessionReturn(
+        closes: [Double],
+        transitions: Int
+    ) -> Double {
+        let required =
+            transitions + 1
+
+        guard
+            closes.count >= required
+        else {
+            return 0
+        }
+
+        let end =
+            closes[
+                closes.count - 1
+            ]
+
+        let start =
+            closes[
+                closes.count - required
+            ]
+
+        return safeReturn(
+            end,
+            start
+        )
+    }
+
+    private static func averageSuffix(
+        _ values: [Double],
+        count: Int
+    ) -> Double {
+        guard !values.isEmpty else {
+            return 0
+        }
+
+        let suffix =
+            values.suffix(
+                min(
+                    count,
+                    values.count
+                )
+            )
+
+        return suffix.reduce(
+            0,
+            +
+        )
+        / Double(suffix.count)
+    }
+
+    private static func safeReturn(
+        _ end: Double,
+        _ start: Double
+    ) -> Double {
+        guard start != 0 else {
+            return 0
+        }
+
+        return end / start - 1
     }
 
     private static func fitStandardizer(
