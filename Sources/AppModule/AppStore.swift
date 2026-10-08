@@ -132,6 +132,13 @@ final class AppStore: ObservableObject {
         "Baseline model not trained yet."
 
     @Published private(set)
+    var isPreparingBaselineContext = false
+
+    @Published private(set)
+    var baselineContextMessage =
+        "Market context requires SPY, IWM and VIXY 1-minute history aligned to the selected research period."
+
+    @Published private(set)
     var isBuildingAllResearch = false
 
     @Published private(set)
@@ -618,13 +625,22 @@ final class AppStore: ObservableObject {
                 ? "Research dataset not built yet."
                 : "Loaded cached research summary for \(asset.symbol)."
 
+            let lockedPolicy =
+                lockedLabelPolicies[
+                    asset.symbol
+                ]
+
             labelCalibrationMessage =
                 labelCalibration == nil
-                ? "Label policies not calibrated yet."
+                ? (
+                    lockedPolicy == nil
+                    ? "Label policies not calibrated yet."
+                    : "Calibration cache is not required: the accepted label policy is locked and frozen for \(asset.symbol)."
+                )
                 : "Loaded cached label calibration for \(asset.symbol)."
 
             policyLockMessage =
-                lockedLabelPolicies[asset.symbol] == nil
+                lockedPolicy == nil
                 ? "No label policy locked for \(asset.symbol)."
                 : "Loaded locked label policy for \(asset.symbol)."
 
@@ -1759,6 +1775,176 @@ final class AppStore: ObservableObject {
         log(
             "info",
             allResearchMessage
+        )
+    }
+
+    func prepareBaselineMarketContextAndTrain() async {
+        guard
+            let summary = researchSummary,
+            let earliest =
+                summary.earliestRow,
+            let latest =
+                summary.latestRow
+        else {
+            baselineContextMessage =
+                "Build the selected symbol research dataset first so the app can derive the required context range."
+
+            log(
+                "warning",
+                baselineContextMessage
+            )
+
+            return
+        }
+
+        guard
+            !isPreparingBaselineContext,
+            !isDownloadingHistory,
+            !isTrainingBaseline
+        else {
+            return
+        }
+
+        let requiredSymbols = [
+            "SPY",
+            "IWM",
+            "VIXY"
+        ]
+
+        let requiredAssets =
+            requiredSymbols.compactMap {
+                symbol in
+
+                assets.first {
+                    $0.symbol
+                        .uppercased()
+                        == symbol
+                }
+            }
+
+        guard
+            requiredAssets.count
+                == requiredSymbols.count
+        else {
+            let found =
+                Set(
+                    requiredAssets.map {
+                        $0.symbol
+                    }
+                )
+
+            let missing =
+                requiredSymbols.filter {
+                    !found.contains($0)
+                }
+
+            baselineContextMessage =
+                "Cannot prepare market context. Missing universe symbols: \(missing.joined(separator: ", "))."
+
+            log(
+                "error",
+                baselineContextMessage
+            )
+
+            return
+        }
+
+        // Start one calendar day before the first research row so each
+        // context series has enough same-session warmup for 60-minute returns.
+        let contextStart =
+            Calendar.current.date(
+                byAdding: .day,
+                value: -1,
+                to: earliest
+            )
+            ?? earliest.addingTimeInterval(
+                -24 * 60 * 60
+            )
+
+        let contextEnd =
+            latest.addingTimeInterval(
+                60
+            )
+
+        isPreparingBaselineContext =
+            true
+
+        baselineContextMessage =
+            "Preparing SPY / IWM / VIXY history for the selected research window…"
+
+        log(
+            "info",
+            baselineContextMessage
+        )
+
+        defer {
+            isPreparingBaselineContext =
+                false
+        }
+
+        await downloadHistoricalDataForAll(
+            assets:
+                requiredAssets,
+            startDate:
+                contextStart,
+            endDate:
+                contextEnd,
+            skipFullyCovered:
+                true
+        )
+
+        var counts:
+            [String] = []
+
+        for asset in requiredAssets {
+            let stats =
+                (try? await repository.stats(
+                    symbol:
+                        asset.symbol,
+                    timeframe:
+                        "1min"
+                ))
+                ?? .empty
+
+            counts.append(
+                "\(asset.symbol) \(stats.count)"
+            )
+        }
+
+        baselineContextMessage =
+            "Context prepared (\(counts.joined(separator: " · "))). Running the model comparison…"
+
+        log(
+            "info",
+            baselineContextMessage
+        )
+
+        await trainBaselineModel()
+
+        if baselineCandidates.contains(
+            where: {
+                $0.variant
+                    == .marketContext28
+            }
+        ) {
+            baselineContextMessage =
+                "Market Context 28 is available and included in the candidate comparison."
+
+        } else {
+            baselineContextMessage =
+                "Context history was downloaded, but common SPY/IWM/VIXY timestamp coverage is still below 70%. Check Debug Console for local bar counts and provider gaps."
+        }
+
+        log(
+            baselineCandidates.contains(
+                where: {
+                    $0.variant
+                        == .marketContext28
+                }
+            )
+            ? "info"
+            : "warning",
+            baselineContextMessage
         )
     }
 
