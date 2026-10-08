@@ -389,6 +389,21 @@ struct ResearchHubView: View {
             )
 
             MetricTile(
+                title: "Sealed holdout",
+                value:
+                    String(
+                        summary
+                            .sealedHoldoutSessionCount
+                    ),
+                subtitle:
+                    summary
+                        .sealedHoldoutSessionCount
+                        > 0
+                    ? "Not used for tuning"
+                    : "Need more sessions"
+            )
+
+            MetricTile(
                 title: "Label policy",
                 value:
                     calibrationStatus,
@@ -849,9 +864,9 @@ struct ResearchHubView: View {
 
     private var baselineSection: some View {
         ResearchCard(
-            title: "Phase 2C · Baseline Model",
+            title: "Phase 2C.3 · Regime-Aware Baseline",
             subtitle:
-                "No-skill prevalence vs logistic classifier on untouched walk-forward test sessions"
+                "22 causal features · validation-only probability calibration · development walk-forward tests"
         ) {
             VStack(
                 alignment: .leading,
@@ -1224,7 +1239,7 @@ struct ResearchHubView: View {
                     }
 
                     Text(
-                        "Thresholds are selected only on each validation block. Test blocks remain untouched until final scoring."
+                        "Thresholds and Platt calibration are fitted only on each validation block. These walk-forward test blocks are development OOS checks; the sealed final holdout remains unused while we refine the architecture."
                     )
                     .font(.caption)
                     .foregroundStyle(
