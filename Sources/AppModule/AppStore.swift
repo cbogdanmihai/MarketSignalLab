@@ -1862,11 +1862,11 @@ final class AppStore: ObservableObject {
 
         if result.passesInitialGate {
             baselineMessage =
-                "Baseline complete: positive Brier skill on LONG (\(longSkill)%) and SHORT (\(shortSkill)%) across the walk-forward tests."
+                "Baseline complete: calibrated probabilities beat the validation-prior no-skill baseline on LONG (\(longSkill)%) and SHORT (\(shortSkill)%) across the walk-forward tests."
 
         } else {
             baselineMessage =
-                "Baseline complete: initial gate not passed. Mean Brier skill LONG \(longSkill)%, SHORT \(shortSkill)%."
+                "Baseline complete: initial gate not passed. Calibrated Brier skill vs validation-prior baseline — LONG \(longSkill)%, SHORT \(shortSkill)%."
         }
 
         log(
