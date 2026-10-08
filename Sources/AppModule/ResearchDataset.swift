@@ -88,6 +88,9 @@ struct ResearchDatasetSummary: Codable, Sendable {
     let rowCount: Int
     let featureCount: Int
     let sessionCount: Int
+    let sealedHoldoutSessionCount: Int
+    let sealedHoldoutStart: Date?
+    let sealedHoldoutEnd: Date?
     let earliestRow: Date?
     let latestRow: Date?
     let longTargetRate: Double
@@ -147,6 +150,34 @@ enum ResearchDatasetBuilder {
             horizonMinutes: horizonMinutes
         )
 
+        let lastDevelopmentTestEnd =
+            folds.map {
+                $0.testEnd
+            }
+            .max()
+
+        let sealedHoldoutRows:
+            [ResearchRow]
+
+        if let lastDevelopmentTestEnd {
+            sealedHoldoutRows =
+                rows.filter {
+                    $0.timestamp
+                        > lastDevelopmentTestEnd
+                }
+
+        } else {
+            sealedHoldoutRows = []
+        }
+
+        let sealedHoldoutSessionCount =
+            Set(
+                sealedHoldoutRows.map {
+                    $0.sessionKey
+                }
+            )
+            .count
+
         let rowCount = rows.count
 
         let longTargets = rows.filter {
@@ -188,6 +219,16 @@ enum ResearchDatasetBuilder {
             rowCount: rowCount,
             featureCount: 16,
             sessionCount: sessions.count,
+            sealedHoldoutSessionCount:
+                sealedHoldoutSessionCount,
+            sealedHoldoutStart:
+                sealedHoldoutRows
+                    .first?
+                    .timestamp,
+            sealedHoldoutEnd:
+                sealedHoldoutRows
+                    .last?
+                    .timestamp,
             earliestRow: rows.first?.timestamp,
             latestRow: rows.last?.timestamp,
             longTargetRate: Double(longTargets) / denominator,
