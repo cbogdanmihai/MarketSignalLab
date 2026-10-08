@@ -920,7 +920,7 @@ struct ResearchHubView: View {
                     HStack(spacing: 12) {
                         MetricTile(
                             title:
-                                "LONG Brier skill",
+                                "LONG calibrated skill",
                             value:
                                 percent(
                                     result
@@ -935,7 +935,7 @@ struct ResearchHubView: View {
 
                         MetricTile(
                             title:
-                                "SHORT Brier skill",
+                                "SHORT calibrated skill",
                             value:
                                 percent(
                                     result
@@ -1011,6 +1011,73 @@ struct ResearchHubView: View {
                                             percent(
                                                 fold
                                                     .brierSkill
+                                            )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Raw"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            percent(
+                                                fold
+                                                    .rawBrierSkill
+                                            )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Actual"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            percent(
+                                                fold
+                                                    .testPrevalence
+                                            )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "Pred"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            percent(
+                                                fold
+                                                    .calibratedTest
+                                                    .meanProbability
                                             )
                                         )
                                         .monospacedDigit()
