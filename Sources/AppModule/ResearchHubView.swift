@@ -872,15 +872,27 @@ struct ResearchHubView: View {
                 alignment: .leading,
                 spacing: 12
             ) {
-                HStack {
+                HStack(
+                    alignment: .top,
+                    spacing: 12
+                ) {
                     VStack(
                         alignment: .leading,
-                        spacing: 3
+                        spacing: 5
                     ) {
                         Text(
                             store.baselineMessage
                         )
                         .font(.callout)
+                        .textSelection(.enabled)
+
+                        Text(
+                            store.baselineContextMessage
+                        )
+                        .font(.caption)
+                        .foregroundStyle(
+                            .secondary
+                        )
                         .textSelection(.enabled)
 
                         if store.selectedLockedLabelPolicy
@@ -903,6 +915,32 @@ struct ResearchHubView: View {
                     Button {
                         Task {
                             await store
+                                .prepareBaselineMarketContextAndTrain()
+                        }
+                    } label: {
+                        Label(
+                            store.isPreparingBaselineContext
+                            ? "Preparing…"
+                            : "Prepare Context + Retrain",
+                            systemImage:
+                                "network"
+                        )
+                    }
+                    .buttonStyle(
+                        .bordered
+                    )
+                    .disabled(
+                        store.isPreparingBaselineContext
+                        || store.isDownloadingHistory
+                        || store.isTrainingBaseline
+                        || store
+                            .selectedLockedLabelPolicy
+                            == nil
+                    )
+
+                    Button {
+                        Task {
+                            await store
                                 .trainBaselineModel()
                         }
                     } label: {
@@ -918,14 +956,34 @@ struct ResearchHubView: View {
                         .borderedProminent
                     )
                     .disabled(
-                        store.isTrainingBaseline
+                        store.isPreparingBaselineContext
+                        || store.isTrainingBaseline
                         || store
                             .selectedLockedLabelPolicy
                             == nil
                     )
                 }
 
-                if store.isTrainingBaseline {
+                if store.isPreparingBaselineContext {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 5
+                    ) {
+                        ProgressView()
+
+                        if let current =
+                            store.historyBatchCurrentSymbol {
+
+                            Text(
+                                "Downloading \(current) · asset \(store.historyBatchCompletedAssets + 1)/\(max(store.historyBatchTotalAssets, 1)) · chunk \(store.historyCompletedChunks)/\(max(store.historyTotalChunks, 1))"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                .secondary
+                            )
+                        }
+                    }
+                } else if store.isTrainingBaseline {
                     ProgressView()
                 }
 
