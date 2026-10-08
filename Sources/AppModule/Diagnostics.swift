@@ -54,6 +54,8 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let researchUsesLockedPolicy: Bool
 
     let baselineAvailable: Bool
+    let baselineCandidateCount: Int
+    let baselineRecommendedVariant: String?
     let baselinePassesInitialGate: Bool?
     let baselineMeanLongSkill: Double?
     let baselineMeanShortSkill: Double?
