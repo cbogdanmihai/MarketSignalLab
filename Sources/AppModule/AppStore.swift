@@ -116,7 +116,13 @@ final class AppStore: ObservableObject {
     var baselineResult: BaselineRunResult?
 
     @Published private(set)
+    var baselineCandidates: [BaselineRunResult] = []
+
+    @Published private(set)
     var baselineBySymbol: [String: BaselineRunResult] = [:]
+
+    @Published private(set)
+    var baselineCandidatesBySymbol: [String: [BaselineRunResult]] = [:]
 
     @Published private(set)
     var isTrainingBaseline = false
@@ -626,6 +632,12 @@ final class AppStore: ObservableObject {
                 baselineBySymbol[
                     asset.symbol
                 ]
+
+            baselineCandidates =
+                baselineCandidatesBySymbol[
+                    asset.symbol
+                ]
+                ?? []
 
             baselineMessage =
                 baselineResult == nil
@@ -1247,6 +1259,12 @@ final class AppStore: ObservableObject {
                     asset.symbol
             )
 
+        baselineCandidatesBySymbol
+            .removeValue(
+                forKey:
+                    asset.symbol
+            )
+
         if baselineResult?.symbol
             == asset.symbol {
 
@@ -1821,60 +1839,121 @@ final class AppStore: ObservableObject {
             isTrainingBaseline = false
         }
 
-        let result =
+        var contextBars:
+            [String: [MarketBar]] = [:]
+
+        for symbol in [
+            "SPY",
+            "IWM",
+            "VIXY"
+        ] {
+            let loaded =
+                (try? await repository.load(
+                    symbol: symbol,
+                    timeframe: "1min"
+                ))
+                ?? []
+
+            contextBars[symbol] =
+                loaded
+
+            log(
+                loaded.isEmpty
+                ? "warning"
+                : "info",
+                "Baseline context \(symbol): \(loaded.count) local 1-minute bars."
+            )
+        }
+
+        let experiment =
             await Task.detached(
                 priority:
                     .userInitiated
             ) {
-                BaselineModelEngine.run(
-                    symbol:
-                        asset.symbol,
-                    lockedPolicy:
-                        locked,
-                    rows: rows,
-                    folds: folds
-                )
+                BaselineModelEngine
+                    .runExperiment(
+                        symbol:
+                            asset.symbol,
+                        lockedPolicy:
+                            locked,
+                        rows: rows,
+                        folds: folds,
+                        contextBars:
+                            contextBars
+                    )
             }
             .value
 
-        baselineResult =
-            result
+        baselineCandidates =
+            experiment.candidates
 
-        baselineBySymbol[
+        baselineCandidatesBySymbol[
             asset.symbol
-        ] = result
+        ] = experiment.candidates
 
-        let longSkill =
-            Int(
-                round(
-                    result.meanLongSkill
-                    * 100
+        baselineResult =
+            experiment.recommended
+
+        if let result =
+            experiment.recommended {
+
+            baselineBySymbol[
+                asset.symbol
+            ] = result
+
+            let longSkill =
+                Int(
+                    round(
+                        result.meanLongSkill
+                        * 100
+                    )
                 )
-            )
 
-        let shortSkill =
-            Int(
-                round(
-                    result.meanShortSkill
-                    * 100
+            let shortSkill =
+                Int(
+                    round(
+                        result.meanShortSkill
+                        * 100
+                    )
                 )
-            )
 
-        if result.passesInitialGate {
-            baselineMessage =
-                "Baseline complete: calibrated probabilities beat the validation-prior no-skill baseline on LONG (\(longSkill)%) and SHORT (\(shortSkill)%) across the walk-forward tests."
+            let contextCandidate =
+                experiment.candidates.first {
+                    $0.variant
+                        == .marketContext28
+                }
+
+            let contextNote =
+                contextCandidate == nil
+                ? " Market Context was not run because SPY/IWM/VIXY coverage is below 70%; download matching context history."
+                : ""
+
+            if result.passesInitialGate {
+                baselineMessage =
+                    "Baseline experiment complete. Recommended \(result.variant.title): LONG \(longSkill)%, SHORT \(shortSkill)% Brier skill. Initial gate passed.\(contextNote)"
+
+            } else {
+                baselineMessage =
+                    "Baseline experiment complete. Recommended \(result.variant.title): LONG \(longSkill)%, SHORT \(shortSkill)% Brier skill. Gate remains REVIEW.\(contextNote)"
+            }
+
+            log(
+                result.passesInitialGate
+                ? "info"
+                : "warning",
+                baselineMessage
+            )
 
         } else {
+            baselineResult = nil
             baselineMessage =
-                "Baseline complete: initial gate not passed. Calibrated Brier skill vs validation-prior baseline — LONG \(longSkill)%, SHORT \(shortSkill)%."
-        }
+                "Baseline experiment produced no eligible candidate."
 
-        log(
-            result.passesInitialGate
-            ? "info"
-            : "warning",
-            baselineMessage
-        )
+            log(
+                "error",
+                baselineMessage
+            )
+        }
     }
 
     func prepareDiagnostics() {
