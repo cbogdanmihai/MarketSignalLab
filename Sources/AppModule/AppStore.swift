@@ -2025,6 +2025,12 @@ final class AppStore: ObservableObject {
                 ?? false,
             baselineAvailable:
                 baselineResult != nil,
+            baselineCandidateCount:
+                baselineCandidates.count,
+            baselineRecommendedVariant:
+                baselineResult?
+                    .variant
+                    .title,
             baselinePassesInitialGate:
                 baselineResult?
                     .passesInitialGate,
