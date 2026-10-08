@@ -159,3 +159,20 @@ The sealed holdout is not used for:
 - development model comparison.
 
 It should remain unopened until the architecture and signal gate are frozen.
+
+
+## Phase 2C.4 — Model comparison
+
+The development OOS results showed that the self-regime 22-feature candidate degraded materially, especially on SHORT. The app no longer replaces the original model blindly.
+
+Baseline training now compares three feature variants on the same development walk-forward folds:
+
+- Core 16: the original intraday causal features;
+- Self Regime 22: Core 16 plus the six self-regime features;
+- Market Context 28: Core 16 plus causal SPY, IWM and VIXY context returns.
+
+The market-context candidate uses, for each context symbol, current-session return and 5/15/60-minute returns. Rows are included only when all required context bars are available at the same timestamp. The candidate is run only when context coverage is at least 70%.
+
+The recommended candidate is selected using the weakest-side development Brier skill, with average skill as a tie-breaker. The sealed holdout remains untouched.
+
+If Market Context is unavailable, download matching SPY / IWM / VIXY 1-minute history via Historical Data → Bulk History and rerun the baseline experiment.
