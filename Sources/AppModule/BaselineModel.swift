@@ -15,8 +15,10 @@ struct BaselineClassificationMetrics:
 
     let samples: Int
     let prevalence: Double
+    let meanProbability: Double
     let threshold: Double
     let brierScore: Double
+    let expectedCalibrationError: Double
     let precision: Double
     let recall: Double
     let f1: Double
@@ -36,30 +38,67 @@ struct BaselineFoldResult:
     let testSamples: Int
 
     let trainPrevalence: Double
+    let validationPrevalence: Double
+    let testPrevalence: Double
     let validationThreshold: Double
 
-    let noSkillTestBrier: Double
-    let logisticTest: BaselineClassificationMetrics
+    let trainPriorTestBrier: Double
+    let validationPriorTestBrier: Double
+
+    let rawLogisticTest:
+        BaselineClassificationMetrics
+
+    let calibratedTest:
+        BaselineClassificationMetrics
 
     var id: String {
         "\(fold)|\(direction.rawValue)"
     }
 
+    var noSkillTestBrier: Double {
+        validationPriorTestBrier
+    }
+
+    var logisticTest:
+        BaselineClassificationMetrics {
+
+        calibratedTest
+    }
+
+    var rawBrierSkill: Double {
+        skill(
+            modelBrier:
+                rawLogisticTest.brierScore
+        )
+    }
+
     var brierSkill: Double {
-        guard noSkillTestBrier > 0 else {
+        skill(
+            modelBrier:
+                calibratedTest.brierScore
+        )
+    }
+
+    var beatsNoSkill: Bool {
+        calibratedTest.brierScore
+            < validationPriorTestBrier
+    }
+
+    private func skill(
+        modelBrier: Double
+    ) -> Double {
+        guard
+            validationPriorTestBrier
+                > 0
+        else {
             return 0
         }
 
         return 1
             - (
-                logisticTest.brierScore
-                / noSkillTestBrier
+                modelBrier
+                / validationPriorTestBrier
             )
-    }
-
-    var beatsNoSkill: Bool {
-        logisticTest.brierScore
-            < noSkillTestBrier
     }
 }
 
@@ -74,13 +113,17 @@ struct BaselineRunResult:
     let featureNames: [String]
     let folds: [BaselineFoldResult]
 
-    var longFolds: [BaselineFoldResult] {
+    var longFolds:
+        [BaselineFoldResult] {
+
         folds.filter {
             $0.direction == .long
         }
     }
 
-    var shortFolds: [BaselineFoldResult] {
+    var shortFolds:
+        [BaselineFoldResult] {
+
         folds.filter {
             $0.direction == .short
         }
@@ -98,6 +141,22 @@ struct BaselineRunResult:
         mean(
             shortFolds.map {
                 $0.brierSkill
+            }
+        )
+    }
+
+    var meanRawLongSkill: Double {
+        mean(
+            longFolds.map {
+                $0.rawBrierSkill
+            }
+        )
+    }
+
+    var meanRawShortSkill: Double {
+        mean(
+            shortFolds.map {
+                $0.rawBrierSkill
             }
         )
     }
@@ -244,6 +303,35 @@ enum BaselineModelEngine {
         }
     }
 
+    private struct PlattScaler {
+        let slope: Double
+        let intercept: Double
+
+        func probability(
+            rawProbability:
+                Double
+        ) -> Double {
+            let raw =
+                min(
+                    max(
+                        rawProbability,
+                        0.000_001
+                    ),
+                    0.999_999
+                )
+
+            let logit =
+                log(
+                    raw / (1 - raw)
+                )
+
+            return sigmoid(
+                slope * logit
+                + intercept
+            )
+        }
+    }
+
     private static func runFold(
         fold: WalkForwardFold,
         direction:
@@ -351,7 +439,13 @@ enum BaselineModelEngine {
         let trainPrevalence =
             prevalence(train)
 
-        let validationProbabilities =
+        let validationPrevalence =
+            prevalence(validation)
+
+        let testPrevalence =
+            prevalence(test)
+
+        let validationRawProbabilities =
             validation.map {
                 model.probability(
                     $0.x
@@ -363,18 +457,41 @@ enum BaselineModelEngine {
                 $0.y
             }
 
-        let threshold =
-            selectThreshold(
+        let platt =
+            fitPlattScaler(
                 probabilities:
-                    validationProbabilities,
+                    validationRawProbabilities,
                 labels:
                     validationLabels
             )
 
-        let testProbabilities =
+        let validationCalibrated =
+            validationRawProbabilities
+                .map {
+                    platt.probability(
+                        rawProbability: $0
+                    )
+                }
+
+        let threshold =
+            selectThreshold(
+                probabilities:
+                    validationCalibrated,
+                labels:
+                    validationLabels
+            )
+
+        let testRawProbabilities =
             test.map {
                 model.probability(
                     $0.x
+                )
+            }
+
+        let testCalibrated =
+            testRawProbabilities.map {
+                platt.probability(
+                    rawProbability: $0
                 )
             }
 
@@ -383,23 +500,36 @@ enum BaselineModelEngine {
                 $0.y
             }
 
-        let noSkillBrier =
-            brier(
-                probabilities:
-                    Array(
-                        repeating:
-                            trainPrevalence,
-                        count:
-                            testLabels.count
-                    ),
+        let trainPriorBrier =
+            constantBrier(
+                probability:
+                    trainPrevalence,
                 labels:
                     testLabels
             )
 
-        let testMetrics =
+        let validationPriorBrier =
+            constantBrier(
+                probability:
+                    validationPrevalence,
+                labels:
+                    testLabels
+            )
+
+        let rawMetrics =
             classificationMetrics(
                 probabilities:
-                    testProbabilities,
+                    testRawProbabilities,
+                labels:
+                    testLabels,
+                threshold:
+                    threshold
+            )
+
+        let calibratedMetrics =
+            classificationMetrics(
+                probabilities:
+                    testCalibrated,
                 labels:
                     testLabels,
                 threshold:
@@ -418,12 +548,20 @@ enum BaselineModelEngine {
                 test.count,
             trainPrevalence:
                 trainPrevalence,
+            validationPrevalence:
+                validationPrevalence,
+            testPrevalence:
+                testPrevalence,
             validationThreshold:
                 threshold,
-            noSkillTestBrier:
-                noSkillBrier,
-            logisticTest:
-                testMetrics
+            trainPriorTestBrier:
+                trainPriorBrier,
+            validationPriorTestBrier:
+                validationPriorBrier,
+            rawLogisticTest:
+                rawMetrics,
+            calibratedTest:
+                calibratedMetrics
         )
     }
 
@@ -685,6 +823,87 @@ enum BaselineModelEngine {
         )
     }
 
+    private static func fitPlattScaler(
+        probabilities: [Double],
+        labels: [Double]
+    ) -> PlattScaler {
+        let count =
+            min(
+                probabilities.count,
+                labels.count
+            )
+
+        guard count > 0 else {
+            return PlattScaler(
+                slope: 1,
+                intercept: 0
+            )
+        }
+
+        var slope = 1.0
+        var intercept = 0.0
+
+        let epochs = 160
+        let learningRate = 0.03
+        let l2 = 0.001
+        let n = Double(count)
+
+        for _ in 0..<epochs {
+            var slopeGradient = 0.0
+            var interceptGradient = 0.0
+
+            for index in 0..<count {
+                let raw =
+                    min(
+                        max(
+                            probabilities[index],
+                            0.000_001
+                        ),
+                        0.999_999
+                    )
+
+                let logit =
+                    log(
+                        raw / (1 - raw)
+                    )
+
+                let prediction =
+                    sigmoid(
+                        slope * logit
+                        + intercept
+                    )
+
+                let error =
+                    prediction
+                    - labels[index]
+
+                slopeGradient +=
+                    error * logit
+
+                interceptGradient +=
+                    error
+            }
+
+            slope -=
+                learningRate
+                * (
+                    slopeGradient / n
+                    + l2 * slope
+                )
+
+            intercept -=
+                learningRate
+                * (
+                    interceptGradient / n
+                )
+        }
+
+        return PlattScaler(
+            slope: slope,
+            intercept: intercept
+        )
+    }
+
     private static func selectThreshold(
         probabilities: [Double],
         labels: [Double]
@@ -746,9 +965,11 @@ enum BaselineModelEngine {
             return BaselineClassificationMetrics(
                 samples: 0,
                 prevalence: 0,
+                meanProbability: 0,
                 threshold:
                     threshold,
                 brierScore: 0,
+                expectedCalibrationError: 0,
                 precision: 0,
                 recall: 0,
                 f1: 0,
@@ -761,6 +982,7 @@ enum BaselineModelEngine {
         var tn = 0
         var fn = 0
         var positives = 0
+        var probabilitySum = 0.0
 
         for index in 0..<count {
             let actual =
@@ -769,6 +991,9 @@ enum BaselineModelEngine {
             let predicted =
                 probabilities[index]
                 >= threshold
+
+            probabilitySum +=
+                probabilities[index]
 
             if actual {
                 positives += 1
@@ -832,10 +1057,26 @@ enum BaselineModelEngine {
             prevalence:
                 Double(positives)
                 / Double(count),
+            meanProbability:
+                probabilitySum
+                / Double(count),
             threshold:
                 threshold,
             brierScore:
                 brier(
+                    probabilities:
+                        Array(
+                            probabilities
+                                .prefix(count)
+                        ),
+                    labels:
+                        Array(
+                            labels
+                                .prefix(count)
+                        )
+                ),
+            expectedCalibrationError:
+                calibrationError(
                     probabilities:
                         Array(
                             probabilities
@@ -871,6 +1112,23 @@ enum BaselineModelEngine {
         / Double(examples.count)
     }
 
+    private static func constantBrier(
+        probability: Double,
+        labels: [Double]
+    ) -> Double {
+        brier(
+            probabilities:
+                Array(
+                    repeating:
+                        probability,
+                    count:
+                        labels.count
+                ),
+            labels:
+                labels
+        )
+    }
+
     private static func brier(
         probabilities: [Double],
         labels: [Double]
@@ -897,6 +1155,84 @@ enum BaselineModelEngine {
         }
 
         return sum / Double(count)
+    }
+
+    private static func calibrationError(
+        probabilities: [Double],
+        labels: [Double]
+    ) -> Double {
+        let count =
+            min(
+                probabilities.count,
+                labels.count
+            )
+
+        guard count > 0 else {
+            return 0
+        }
+
+        let bins = 10
+        var totalError = 0.0
+
+        for bin in 0..<bins {
+            let lower =
+                Double(bin)
+                / Double(bins)
+
+            let upper =
+                Double(bin + 1)
+                / Double(bins)
+
+            var binCount = 0
+            var probabilitySum = 0.0
+            var labelSum = 0.0
+
+            for index in 0..<count {
+                let probability =
+                    probabilities[index]
+
+                let inBin =
+                    bin == bins - 1
+                    ? (
+                        probability >= lower
+                        && probability <= upper
+                    )
+                    : (
+                        probability >= lower
+                        && probability < upper
+                    )
+
+                if inBin {
+                    binCount += 1
+                    probabilitySum +=
+                        probability
+                    labelSum +=
+                        labels[index]
+                }
+            }
+
+            guard binCount > 0 else {
+                continue
+            }
+
+            let meanProbability =
+                probabilitySum
+                / Double(binCount)
+
+            let observed =
+                labelSum
+                / Double(binCount)
+
+            totalError +=
+                Double(binCount)
+                / Double(count)
+                * abs(
+                    meanProbability
+                    - observed
+                )
+        }
+
+        return totalError
     }
 
     private static func sigmoid(
