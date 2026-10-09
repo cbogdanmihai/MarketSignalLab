@@ -21,6 +21,9 @@ struct ResearchHubView: View {
     @State
     private var scope: ResearchHubScope = .symbol
 
+    @State
+    private var showingHoldoutConfirmation = false
+
     private var displayedLongTarget: Double {
         store.labelCalibration?.recommended?.longTargetRate
         ?? store.researchSummary?.longTargetRate
@@ -94,6 +97,32 @@ struct ResearchHubView: View {
         .task {
             await store.refreshStorageOverview()
         }
+        .confirmationDialog(
+            "Open the sealed holdout?",
+            isPresented:
+                $showingHoldoutConfirmation,
+            titleVisibility:
+                .visible
+        ) {
+            Button(
+                "Open Holdout Once",
+                role: .destructive
+            ) {
+                Task {
+                    await store
+                        .evaluateSealedHoldout()
+                }
+            }
+
+            Button(
+                "Cancel",
+                role: .cancel
+            ) {}
+        } message: {
+            Text(
+                "This permanently consumes the current holdout. The result is persisted and must not be used to retune this architecture. Any later tuning requires new future data and a new holdout."
+            )
+        }
     }
 
     private var header: some View {
@@ -159,6 +188,8 @@ struct ResearchHubView: View {
                 baselineSection
 
                 directionalGateSection
+
+                sealedHoldoutSection
 
             } else {
                 emptyResearchState
@@ -1671,6 +1702,381 @@ struct ResearchHubView: View {
         }
     }
 
+    private var sealedHoldoutSection: some View {
+        ResearchCard(
+            title:
+                "Phase 2E · Sealed Holdout",
+            subtitle:
+                "One-time final OOS check for the frozen directional architecture"
+        ) {
+            VStack(
+                alignment: .leading,
+                spacing: 12
+            ) {
+                if let result =
+                    store
+                        .selectedSealedHoldoutEvaluation {
+
+                    HStack(spacing: 12) {
+                        MetricTile(
+                            title:
+                                "Holdout status",
+                            value:
+                                "CONSUMED",
+                            subtitle:
+                                result.preliminaryPass
+                                ? "Probability gate passed"
+                                : "Probability gate missed"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Architecture",
+                            value:
+                                result.signalMode,
+                            subtitle:
+                                "Frozen before evaluation"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Sessions",
+                            value:
+                                String(
+                                    result.directions
+                                        .first?
+                                        .holdoutSessionCount
+                                    ?? 0
+                                ),
+                            subtitle:
+                                "Final OOS block"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Evaluated",
+                            value:
+                                result.evaluatedAt
+                                    .formatted(
+                                        date: .abbreviated,
+                                        time: .shortened
+                                    ),
+                            subtitle:
+                                "Persisted locally"
+                        )
+                    }
+
+                    ForEach(
+                        result.directions
+                    ) { direction in
+                        VStack(
+                            alignment: .leading,
+                            spacing: 8
+                        ) {
+                            HStack {
+                                Text(
+                                    "\(direction.direction.rawValue) · \(direction.variant.title)"
+                                )
+                                .font(
+                                    .headline
+                                )
+
+                                Spacer()
+
+                                Text(
+                                    direction
+                                        .passesProbabilityGate
+                                    ? "PASS"
+                                    : "MISS"
+                                )
+                                .font(
+                                    .caption.bold()
+                                )
+                                .foregroundStyle(
+                                    direction
+                                        .passesProbabilityGate
+                                    ? Color.green
+                                    : Color.orange
+                                )
+                            }
+
+                            HStack(spacing: 18) {
+                                HoldoutMetric(
+                                    title:
+                                        "Brier skill",
+                                    value:
+                                        percent(
+                                            direction
+                                                .brierSkill
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Brier",
+                                    value:
+                                        direction
+                                            .metrics
+                                            .brierScore
+                                            .formatted(
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        4
+                                                    )
+                                                )
+                                            )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "No-skill",
+                                    value:
+                                        direction
+                                            .noSkillBrier
+                                            .formatted(
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        4
+                                                    )
+                                                )
+                                            )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Actual",
+                                    value:
+                                        percent(
+                                            direction
+                                                .holdoutPrevalence
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Pred",
+                                    value:
+                                        percent(
+                                            direction
+                                                .metrics
+                                                .meanProbability
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Precision",
+                                    value:
+                                        percent(
+                                            direction
+                                                .metrics
+                                                .precision
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Recall",
+                                    value:
+                                        percent(
+                                            direction
+                                                .metrics
+                                                .recall
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "F1",
+                                    value:
+                                        percent(
+                                            direction
+                                                .metrics
+                                                .f1
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "Threshold",
+                                    value:
+                                        percent(
+                                            direction
+                                                .metrics
+                                                .threshold
+                                        )
+                                )
+
+                                HoldoutMetric(
+                                    title:
+                                        "L2",
+                                    value:
+                                        direction
+                                            .selectedL2
+                                            .formatted(
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        3
+                                                    )
+                                                )
+                                            )
+                                )
+                            }
+
+                            Text(
+                                "Train \(direction.trainSessionCount) sessions · calibration \(direction.calibrationSessionCount) · holdout \(direction.holdoutSessionCount) · \(direction.holdoutSamples) labeled holdout rows."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                .secondary
+                            )
+                        }
+                        .padding(
+                            12
+                        )
+                        .background(
+                            Color(
+                                uiColor:
+                                    .tertiarySystemBackground
+                            ),
+                            in:
+                                RoundedRectangle(
+                                    cornerRadius: 10
+                                )
+                        )
+                    }
+
+                    Label(
+                        "This holdout is consumed. Do not retune the current architecture from this result. With only a few independent sessions, treat it as an initial final check rather than production proof.",
+                        systemImage:
+                            "lock.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                } else {
+                    HStack(spacing: 12) {
+                        MetricTile(
+                            title:
+                                "Status",
+                            value:
+                                "SEALED",
+                            subtitle:
+                                "Never evaluated"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Sessions",
+                            value:
+                                String(
+                                    store
+                                        .researchSummary?
+                                        .sealedHoldoutSessionCount
+                                    ?? 0
+                                ),
+                            subtitle:
+                                "Reserved final block"
+                        )
+
+                        MetricTile(
+                            title:
+                                "Architecture",
+                            value:
+                                store
+                                    .baselineDirectionalGate?
+                                    .mode
+                                ?? "—",
+                            subtitle:
+                                "Must be frozen first"
+                        )
+
+                        MetricTile(
+                            title:
+                                "SHORT",
+                            value:
+                                store
+                                    .baselineDirectionalGate?
+                                    .short
+                                    .enabled
+                                == true
+                                ? "ENABLED"
+                                : "NO_TRADE",
+                            subtitle:
+                                "Frozen gate"
+                        )
+                    }
+
+                    Text(
+                        store.sealedHoldoutMessage
+                    )
+                    .font(.callout)
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                    HStack {
+                        Label(
+                            "Opening this block is irreversible for model-development purposes.",
+                            systemImage:
+                                "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(
+                            .orange
+                        )
+
+                        Spacer()
+
+                        Button {
+                            showingHoldoutConfirmation =
+                                true
+                        } label: {
+                            Label(
+                                store
+                                    .isEvaluatingSealedHoldout
+                                ? "Evaluating…"
+                                : "Open Sealed Holdout Once",
+                                systemImage:
+                                    "lock.open.fill"
+                            )
+                        }
+                        .buttonStyle(
+                            .borderedProminent
+                        )
+                        .disabled(
+                            store
+                                .isEvaluatingSealedHoldout
+                            || store
+                                .baselineDirectionalGate
+                                == nil
+                            || (
+                                store
+                                    .baselineDirectionalGate?
+                                    .long
+                                    .enabled
+                                != true
+                                && store
+                                    .baselineDirectionalGate?
+                                    .short
+                                    .enabled
+                                != true
+                            )
+                        )
+                    }
+
+                    if store
+                        .isEvaluatingSealedHoldout {
+
+                        ProgressView()
+                    }
+                }
+            }
+        }
+    }
+
     private var emptyResearchState: some View {
         ResearchCard(
             title: "No research dataset",
@@ -2136,6 +2542,30 @@ struct ResearchHubView: View {
             format: "%.1f%%",
             value * 100
         )
+    }
+}
+
+private struct HoldoutMetric: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(
+            alignment: .trailing,
+            spacing: 2
+        ) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(
+                    .secondary
+                )
+
+            Text(value)
+                .font(
+                    .caption.bold()
+                )
+                .monospacedDigit()
+        }
     }
 }
 
