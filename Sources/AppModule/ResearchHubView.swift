@@ -864,9 +864,9 @@ struct ResearchHubView: View {
 
     private var baselineSection: some View {
         ResearchCard(
-            title: "Phase 2C.4 · Baseline Model Comparison",
+            title: "Phase 2C.5 · Regularized Baseline Lab",
             subtitle:
-                "Core vs self-regime vs SPY/IWM/VIXY context · validation-only calibration · sealed holdout untouched"
+                "Core vs regime/context variants · nested ridge selection · validation-only calibration · sealed holdout untouched"
         ) {
             VStack(
                 alignment: .leading,
@@ -1289,6 +1289,31 @@ struct ResearchHubView: View {
                                                 fold
                                                     .rawBrierSkill
                                             )
+                                        )
+                                        .monospacedDigit()
+                                    }
+
+                                    VStack(
+                                        alignment:
+                                            .trailing,
+                                        spacing: 1
+                                    ) {
+                                        Text(
+                                            "L2"
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(
+                                            .secondary
+                                        )
+
+                                        Text(
+                                            fold.selectedL2,
+                                            format:
+                                                .number.precision(
+                                                    .fractionLength(
+                                                        3
+                                                    )
+                                                )
                                         )
                                         .monospacedDigit()
                                     }
