@@ -463,6 +463,70 @@ struct BaselineExperimentResult:
     }
 }
 
+struct SealedHoldoutDirectionResult:
+    Identifiable,
+    Codable,
+    Sendable {
+
+    let direction: BaselineDirection
+    let variant: BaselineFeatureVariant
+    let trainSessionCount: Int
+    let calibrationSessionCount: Int
+    let holdoutSessionCount: Int
+    let trainSamples: Int
+    let calibrationSamples: Int
+    let holdoutSamples: Int
+    let selectedL2: Double
+    let calibrationPrevalence: Double
+    let holdoutPrevalence: Double
+    let noSkillBrier: Double
+    let metrics: BaselineClassificationMetrics
+
+    var id: String {
+        direction.rawValue
+    }
+
+    var brierSkill: Double {
+        guard noSkillBrier > 0 else {
+            return 0
+        }
+
+        return 1
+            - (
+                metrics.brierScore
+                / noSkillBrier
+            )
+    }
+
+    var passesProbabilityGate: Bool {
+        brierSkill > 0
+    }
+}
+
+struct SealedHoldoutEvaluation:
+    Codable,
+    Sendable {
+
+    let architectureID: String
+    let symbol: String
+    let evaluatedAt: Date
+    let holdoutStart: Date
+    let holdoutEnd: Date
+    let signalMode: String
+    let directions:
+        [SealedHoldoutDirectionResult]
+
+    var preliminaryPass: Bool {
+        guard !directions.isEmpty else {
+            return false
+        }
+
+        return directions.allSatisfy {
+            $0.passesProbabilityGate
+        }
+    }
+}
+
 enum BaselineModelEngine {
     static let coreFeatureNames = [
         "minuteOfSession",
@@ -622,6 +686,462 @@ enum BaselineModelEngine {
                 recommended?
                     .variant
         )
+    }
+
+    static func runSealedHoldout(
+        architectureID: String,
+        symbol: String,
+        signalMode: String,
+        lockedPolicy:
+            LockedLabelPolicyRecord,
+        rows: [ResearchRow],
+        holdoutStart: Date,
+        holdoutEnd: Date,
+        longVariant:
+            BaselineFeatureVariant?,
+        shortVariant:
+            BaselineFeatureVariant?,
+        contextBars:
+            [String: [MarketBar]]
+    ) -> SealedHoldoutEvaluation? {
+        let developmentRows =
+            rows.filter {
+                $0.timestamp
+                    < holdoutStart
+            }
+
+        let holdoutRows =
+            rows.filter {
+                $0.timestamp
+                    >= holdoutStart
+                && $0.timestamp
+                    <= holdoutEnd
+            }
+
+        let developmentSessions =
+            orderedSessions(
+                developmentRows
+            )
+
+        let holdoutSessions =
+            orderedSessions(
+                holdoutRows
+            )
+
+        guard
+            developmentSessions.count >= 12,
+            holdoutSessions.count >= 3
+        else {
+            return nil
+        }
+
+        let calibrationCount =
+            min(
+                developmentSessions.count - 8,
+                max(
+                    5,
+                    Int(
+                        round(
+                            Double(
+                                developmentSessions.count
+                            )
+                            * 0.20
+                        )
+                    )
+                )
+            )
+
+        guard
+            calibrationCount >= 3,
+            developmentSessions.count
+                - calibrationCount
+                >= 8
+        else {
+            return nil
+        }
+
+        let splitIndex =
+            developmentSessions.count
+            - calibrationCount
+
+        let trainRows =
+            developmentSessions[
+                0..<splitIndex
+            ]
+            .flatMap {
+                $0
+            }
+
+        let calibrationRows =
+            developmentSessions[
+                splitIndex
+                    ..< developmentSessions.count
+            ]
+            .flatMap {
+                $0
+            }
+
+        let selfRegime =
+            buildSelfRegimeFeatures(
+                rows: rows
+            )
+
+        let marketContext =
+            buildMarketContextFeatures(
+                rows: rows,
+                contextBars:
+                    contextBars
+            )
+
+        var directionResults:
+            [SealedHoldoutDirectionResult] = []
+
+        if let longVariant,
+           let result =
+            runSealedDirection(
+                direction: .long,
+                variant:
+                    longVariant,
+                trainRows:
+                    trainRows,
+                calibrationRows:
+                    calibrationRows,
+                holdoutRows:
+                    holdoutRows,
+                trainSessionCount:
+                    splitIndex,
+                calibrationSessionCount:
+                    calibrationCount,
+                holdoutSessionCount:
+                    holdoutSessions.count,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            ) {
+
+            directionResults.append(
+                result
+            )
+        }
+
+        if let shortVariant,
+           let result =
+            runSealedDirection(
+                direction: .short,
+                variant:
+                    shortVariant,
+                trainRows:
+                    trainRows,
+                calibrationRows:
+                    calibrationRows,
+                holdoutRows:
+                    holdoutRows,
+                trainSessionCount:
+                    splitIndex,
+                calibrationSessionCount:
+                    calibrationCount,
+                holdoutSessionCount:
+                    holdoutSessions.count,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            ) {
+
+            directionResults.append(
+                result
+            )
+        }
+
+        guard
+            !directionResults.isEmpty
+        else {
+            return nil
+        }
+
+        return SealedHoldoutEvaluation(
+            architectureID:
+                architectureID,
+            symbol: symbol,
+            evaluatedAt: Date(),
+            holdoutStart:
+                holdoutStart,
+            holdoutEnd:
+                holdoutEnd,
+            signalMode:
+                signalMode,
+            directions:
+                directionResults
+        )
+    }
+
+    private static func runSealedDirection(
+        direction:
+            BaselineDirection,
+        variant:
+            BaselineFeatureVariant,
+        trainRows: [ResearchRow],
+        calibrationRows:
+            [ResearchRow],
+        holdoutRows: [ResearchRow],
+        trainSessionCount: Int,
+        calibrationSessionCount: Int,
+        holdoutSessionCount: Int,
+        selfRegime:
+            [String: [Double]],
+        marketContext:
+            [String: [Double]]
+    ) -> SealedHoldoutDirectionResult? {
+        let rawTrain =
+            examples(
+                rows: trainRows,
+                direction:
+                    direction,
+                variant:
+                    variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        let rawCalibration =
+            examples(
+                rows:
+                    calibrationRows,
+                direction:
+                    direction,
+                variant:
+                    variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        let rawHoldout =
+            examples(
+                rows: holdoutRows,
+                direction:
+                    direction,
+                variant:
+                    variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        guard
+            rawTrain.count >= 300,
+            rawCalibration.count >= 100,
+            rawHoldout.count >= 100
+        else {
+            return nil
+        }
+
+        let selectedL2 =
+            selectRegularization(
+                trainRows:
+                    trainRows,
+                direction:
+                    direction,
+                variant:
+                    variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        let standardizer =
+            fitStandardizer(
+                rawTrain.map {
+                    $0.x
+                }
+            )
+
+        let train =
+            rawTrain.map {
+                Example(
+                    x:
+                        standardizer
+                            .transform(
+                                $0.x
+                            ),
+                    y: $0.y
+                )
+            }
+
+        let calibration =
+            rawCalibration.map {
+                Example(
+                    x:
+                        standardizer
+                            .transform(
+                                $0.x
+                            ),
+                    y: $0.y
+                )
+            }
+
+        let holdout =
+            rawHoldout.map {
+                Example(
+                    x:
+                        standardizer
+                            .transform(
+                                $0.x
+                            ),
+                    y: $0.y
+                )
+            }
+
+        let model =
+            trainLogistic(
+                examples: train,
+                l2: selectedL2
+            )
+
+        let calibrationRawProbabilities =
+            calibration.map {
+                model.probability(
+                    $0.x
+                )
+            }
+
+        let calibrationLabels =
+            calibration.map {
+                $0.y
+            }
+
+        let scaler =
+            fitPlattScaler(
+                probabilities:
+                    calibrationRawProbabilities,
+                labels:
+                    calibrationLabels
+            )
+
+        let calibrationProbabilities =
+            calibrationRawProbabilities
+                .map {
+                    scaler.probability(
+                        rawProbability:
+                            $0
+                    )
+                }
+
+        let threshold =
+            selectThreshold(
+                probabilities:
+                    calibrationProbabilities,
+                labels:
+                    calibrationLabels
+            )
+
+        let holdoutProbabilities =
+            holdout.map {
+                scaler.probability(
+                    rawProbability:
+                        model.probability(
+                            $0.x
+                        )
+                )
+            }
+
+        let holdoutLabels =
+            holdout.map {
+                $0.y
+            }
+
+        let calibrationPrevalence =
+            prevalence(
+                calibration
+            )
+
+        let holdoutPrevalence =
+            prevalence(
+                holdout
+            )
+
+        let noSkillBrier =
+            constantBrier(
+                probability:
+                    calibrationPrevalence,
+                labels:
+                    holdoutLabels
+            )
+
+        let metrics =
+            classificationMetrics(
+                probabilities:
+                    holdoutProbabilities,
+                labels:
+                    holdoutLabels,
+                threshold:
+                    threshold
+            )
+
+        return SealedHoldoutDirectionResult(
+            direction:
+                direction,
+            variant:
+                variant,
+            trainSessionCount:
+                trainSessionCount,
+            calibrationSessionCount:
+                calibrationSessionCount,
+            holdoutSessionCount:
+                holdoutSessionCount,
+            trainSamples:
+                train.count,
+            calibrationSamples:
+                calibration.count,
+            holdoutSamples:
+                holdout.count,
+            selectedL2:
+                selectedL2,
+            calibrationPrevalence:
+                calibrationPrevalence,
+            holdoutPrevalence:
+                holdoutPrevalence,
+            noSkillBrier:
+                noSkillBrier,
+            metrics:
+                metrics
+        )
+    }
+
+    private static func orderedSessions(
+        _ rows: [ResearchRow]
+    ) -> [[ResearchRow]] {
+        Array(
+            Dictionary(
+                grouping:
+                    rows.sorted {
+                        $0.timestamp
+                            < $1.timestamp
+                    },
+                by: {
+                    $0.sessionKey
+                }
+            )
+            .values
+        )
+        .map {
+            $0.sorted {
+                $0.timestamp
+                    < $1.timestamp
+            }
+        }
+        .sorted {
+            ($0.first?.timestamp
+                ?? .distantPast)
+            < ($1.first?.timestamp
+                ?? .distantPast)
+        }
     }
 
     private struct Example {
