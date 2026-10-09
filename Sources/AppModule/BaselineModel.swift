@@ -240,6 +240,53 @@ struct BaselineRunResult:
     }
 }
 
+struct BaselineDirectionGate:
+    Codable,
+    Sendable {
+
+    let direction: BaselineDirection
+    let variant: BaselineFeatureVariant?
+    let meanSkill: Double
+    let positiveFoldCount: Int
+    let foldCount: Int
+    let worstFoldSkill: Double
+    let enabled: Bool
+    let reason: String
+
+    var modeLabel: String {
+        enabled
+        ? direction.rawValue
+        : "NO_TRADE"
+    }
+}
+
+struct BaselineDirectionalGateSummary:
+    Codable,
+    Sendable {
+
+    let long: BaselineDirectionGate
+    let short: BaselineDirectionGate
+
+    var mode: String {
+        switch (
+            long.enabled,
+            short.enabled
+        ) {
+        case (true, true):
+            return "BIDIRECTIONAL"
+
+        case (true, false):
+            return "LONG_ONLY"
+
+        case (false, true):
+            return "SHORT_ONLY"
+
+        case (false, false):
+            return "NO_TRADE"
+        }
+    }
+}
+
 struct BaselineExperimentResult:
     Codable,
     Sendable {
@@ -279,6 +326,119 @@ struct BaselineExperimentResult:
             $0.meanShortSkill
                 < $1.meanShortSkill
         }
+    }
+
+    var directionalGate:
+        BaselineDirectionalGateSummary {
+
+        BaselineDirectionalGateSummary(
+            long:
+                Self.makeGate(
+                    direction: .long,
+                    candidate:
+                        bestLong
+                ),
+            short:
+                Self.makeGate(
+                    direction: .short,
+                    candidate:
+                        bestShort
+                )
+        )
+    }
+
+    private static func makeGate(
+        direction:
+            BaselineDirection,
+        candidate:
+            BaselineRunResult?
+    ) -> BaselineDirectionGate {
+        guard let candidate else {
+            return BaselineDirectionGate(
+                direction: direction,
+                variant: nil,
+                meanSkill: 0,
+                positiveFoldCount: 0,
+                foldCount: 0,
+                worstFoldSkill: 0,
+                enabled: false,
+                reason:
+                    "No eligible development model."
+            )
+        }
+
+        let folds =
+            direction == .long
+            ? candidate.longFolds
+            : candidate.shortFolds
+
+        let skills =
+            folds.map {
+                $0.brierSkill
+            }
+
+        let meanSkill =
+            direction == .long
+            ? candidate.meanLongSkill
+            : candidate.meanShortSkill
+
+        let positiveFoldCount =
+            skills.filter {
+                $0 > 0
+            }
+            .count
+
+        let worstFoldSkill =
+            skills.min()
+            ?? 0
+
+        let enoughFolds =
+            folds.count >= 3
+
+        let stableEnough =
+            positiveFoldCount >= 2
+
+        let enabled =
+            enoughFolds
+            && meanSkill > 0
+            && stableEnough
+
+        let reason: String
+
+        if !enoughFolds {
+            reason =
+                "Fewer than three development OOS folds."
+
+        } else if meanSkill <= 0 {
+            reason =
+                "Mean development Brier skill is not positive."
+
+        } else if !stableEnough {
+            reason =
+                "Positive skill appears in fewer than two of three folds."
+
+        } else {
+            reason =
+                "Positive mean Brier skill with at least two positive development folds."
+        }
+
+        return BaselineDirectionGate(
+            direction: direction,
+            variant:
+                candidate.variant,
+            meanSkill:
+                meanSkill,
+            positiveFoldCount:
+                positiveFoldCount,
+            foldCount:
+                folds.count,
+            worstFoldSkill:
+                worstFoldSkill,
+            enabled:
+                enabled,
+            reason:
+                reason
+        )
     }
 }
 
