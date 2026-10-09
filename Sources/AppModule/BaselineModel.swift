@@ -78,6 +78,7 @@ struct BaselineFoldResult:
     let validationPrevalence: Double
     let testPrevalence: Double
     let validationThreshold: Double
+    let selectedL2: Double
 
     let trainPriorTestBrier: Double
     let validationPriorTestBrier: Double
@@ -678,6 +679,17 @@ enum BaselineModelEngine {
             return nil
         }
 
+        let selectedL2 =
+            selectRegularization(
+                trainRows: trainRows,
+                direction: direction,
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
         let standardizer =
             fitStandardizer(
                 rawTrain.map {
@@ -723,7 +735,8 @@ enum BaselineModelEngine {
 
         let model =
             trainLogistic(
-                examples: train
+                examples: train,
+                l2: selectedL2
             )
 
         let trainPrevalence =
@@ -844,6 +857,8 @@ enum BaselineModelEngine {
                 testPrevalence,
             validationThreshold:
                 threshold,
+            selectedL2:
+                selectedL2,
             trainPriorTestBrier:
                 trainPriorBrier,
             validationPriorTestBrier:
@@ -1431,7 +1446,8 @@ enum BaselineModelEngine {
     }
 
     private static func trainLogistic(
-        examples: [Example]
+        examples: [Example],
+        l2: Double
     ) -> LogisticModel {
         guard
             let first =
@@ -1469,7 +1485,6 @@ enum BaselineModelEngine {
 
         let epochs = 120
         let learningRate = 0.06
-        let l2 = 0.001
         let n =
             Double(
                 examples.count
@@ -1538,6 +1553,194 @@ enum BaselineModelEngine {
             weights: weights,
             bias: bias
         )
+    }
+
+    private static func selectRegularization(
+        trainRows: [ResearchRow],
+        direction:
+            BaselineDirection,
+        variant:
+            BaselineFeatureVariant,
+        selfRegime:
+            [String: [Double]],
+        marketContext:
+            [String: [Double]]
+    ) -> Double {
+        let orderedSessions =
+            Array(
+                Dictionary(
+                    grouping:
+                        trainRows.sorted {
+                            $0.timestamp
+                                < $1.timestamp
+                        },
+                    by: {
+                        $0.sessionKey
+                    }
+                )
+                .values
+            )
+            .map {
+                $0.sorted {
+                    $0.timestamp
+                        < $1.timestamp
+                }
+            }
+            .sorted {
+                ($0.first?.timestamp
+                    ?? .distantPast)
+                < ($1.first?.timestamp
+                    ?? .distantPast)
+            }
+
+        guard orderedSessions.count >= 6 else {
+            return 0.01
+        }
+
+        let innerTrainCount =
+            min(
+                orderedSessions.count - 2,
+                max(
+                    4,
+                    Int(
+                        floor(
+                            Double(
+                                orderedSessions.count
+                            )
+                            * 0.75
+                        )
+                    )
+                )
+            )
+
+        let innerTrainRows =
+            orderedSessions[
+                0..<innerTrainCount
+            ]
+            .flatMap {
+                $0
+            }
+
+        let innerValidationRows =
+            orderedSessions[
+                innerTrainCount
+                    ..< orderedSessions.count
+            ]
+            .flatMap {
+                $0
+            }
+
+        let rawInnerTrain =
+            examples(
+                rows: innerTrainRows,
+                direction: direction,
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        let rawInnerValidation =
+            examples(
+                rows:
+                    innerValidationRows,
+                direction: direction,
+                variant: variant,
+                selfRegime:
+                    selfRegime,
+                marketContext:
+                    marketContext
+            )
+
+        guard
+            rawInnerTrain.count >= 150,
+            rawInnerValidation.count >= 50
+        else {
+            return 0.01
+        }
+
+        let standardizer =
+            fitStandardizer(
+                rawInnerTrain.map {
+                    $0.x
+                }
+            )
+
+        let innerTrain =
+            rawInnerTrain.map {
+                Example(
+                    x:
+                        standardizer
+                            .transform(
+                                $0.x
+                            ),
+                    y: $0.y
+                )
+            }
+
+        let innerValidation =
+            rawInnerValidation.map {
+                Example(
+                    x:
+                        standardizer
+                            .transform(
+                                $0.x
+                            ),
+                    y: $0.y
+                )
+            }
+
+        let validationLabels =
+            innerValidation.map {
+                $0.y
+            }
+
+        let candidates = [
+            0.001,
+            0.005,
+            0.01,
+            0.05,
+            0.10,
+            0.25,
+            0.50,
+            1.00
+        ]
+
+        var bestL2 = 0.01
+        var bestBrier =
+            Double.greatestFiniteMagnitude
+
+        for l2 in candidates {
+            let model =
+                trainLogistic(
+                    examples:
+                        innerTrain,
+                    l2: l2
+                )
+
+            let probabilities =
+                innerValidation.map {
+                    model.probability(
+                        $0.x
+                    )
+                }
+
+            let score =
+                brier(
+                    probabilities:
+                        probabilities,
+                    labels:
+                        validationLabels
+                )
+
+            if score < bestBrier {
+                bestBrier = score
+                bestL2 = l2
+            }
+        }
+
+        return bestL2
     }
 
     private static func fitPlattScaler(
