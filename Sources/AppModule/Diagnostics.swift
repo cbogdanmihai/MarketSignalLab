@@ -68,6 +68,14 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let baselineShortGateSkill: Double?
     let baselineMessage: String
 
+    let sealedHoldoutConsumed: Bool
+    let sealedHoldoutEvaluatedAt: Date?
+    let sealedHoldoutSignalMode: String?
+    let sealedHoldoutPreliminaryPass: Bool?
+    let sealedHoldoutDirections:
+        [SealedHoldoutDirectionResult]
+    let sealedHoldoutMessage: String
+
     let availableCount: Int
     let restrictedCount: Int
     let unavailableCount: Int
