@@ -228,3 +228,25 @@ The new development gate selects the best candidate independently for LONG and S
 If a direction fails the gate, its output is explicitly NO_TRADE.
 
 This development gate does not open the sealed holdout and does not yet create live signals. It is the architecture-freeze step before final development fitting and one-time sealed holdout evaluation.
+
+
+## Phase 2E — One-time sealed holdout
+
+The development architecture now supports an explicit one-time final holdout check.
+
+The Research screen keeps the final sessions sealed until the user confirms **Open Sealed Holdout Once**. At that moment the app:
+
+- freezes the current directional architecture;
+- evaluates only directions enabled by the Phase 2D gate;
+- chronologically splits pre-holdout development sessions into final model-training and probability-calibration blocks;
+- selects ridge regularization only inside the final training block;
+- fits the logistic model on final training data;
+- fits Platt probability calibration and the classification threshold on the final calibration block;
+- evaluates the reserved holdout exactly once;
+- persists the holdout result locally so the same holdout cannot be reopened for another architecture.
+
+The holdout report includes Brier skill vs the calibration-prior no-skill baseline, Brier score, event prevalence, predicted probability, precision, recall, F1, threshold and selected L2.
+
+A consumed holdout must not be used for another round of model tuning. Any architecture change after seeing the holdout requires new future data and a new sealed holdout.
+
+The current QQQ holdout contains only a small number of independent sessions, so a positive result is an initial OOS confirmation rather than production-grade proof.
