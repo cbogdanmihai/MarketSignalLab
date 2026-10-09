@@ -138,6 +138,32 @@ final class AppStore: ObservableObject {
     var baselineContextMessage =
         "Market context requires SPY, IWM and VIXY 1-minute history aligned to the selected research period."
 
+    @Published private(set)
+    var sealedHoldoutBySymbol:
+        [String: SealedHoldoutEvaluation] = [:]
+
+    @Published private(set)
+    var isEvaluatingSealedHoldout = false
+
+    @Published private(set)
+    var sealedHoldoutMessage =
+        "Sealed holdout has not been opened."
+
+    var selectedSealedHoldoutEvaluation:
+        SealedHoldoutEvaluation? {
+
+        guard
+            let symbol =
+                selectedAsset?.symbol
+        else {
+            return nil
+        }
+
+        return sealedHoldoutBySymbol[
+            symbol
+        ]
+    }
+
     var baselineDirectionalGate:
         BaselineDirectionalGateSummary? {
 
@@ -183,6 +209,9 @@ final class AppStore: ObservableObject {
     private let lockedLabelPoliciesDefaultsKey =
         "MarketSignalLab.LockedLabelPolicies.v1"
 
+    private let sealedHoldoutDefaultsKey =
+        "MarketSignalLab.SealedHoldoutEvaluations.v1"
+
     @Published private(set)
     var diagnosticEvents: [DiagnosticEvent] = []
 
@@ -201,6 +230,7 @@ final class AppStore: ObservableObject {
 
         loadValidationCache()
         loadLockedLabelPolicies()
+        loadSealedHoldoutEvaluations()
 
         do {
             let builtIn = try UniverseLoader.load()
@@ -2154,6 +2184,293 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func evaluateSealedHoldout() async {
+        guard
+            let asset =
+                selectedAsset,
+            let locked =
+                selectedLockedLabelPolicy,
+            let summary =
+                researchSummary,
+            let gate =
+                baselineDirectionalGate,
+            let holdoutStart =
+                summary.sealedHoldoutStart,
+            let holdoutEnd =
+                summary.sealedHoldoutEnd
+        else {
+            sealedHoldoutMessage =
+                "Run the locked-policy baseline and directional gate before opening the sealed holdout."
+
+            log(
+                "warning",
+                sealedHoldoutMessage
+            )
+
+            return
+        }
+
+        guard
+            summary.sealedHoldoutSessionCount
+                >= 3
+        else {
+            sealedHoldoutMessage =
+                "The sealed holdout has fewer than three sessions and is too small to open."
+
+            log(
+                "warning",
+                sealedHoldoutMessage
+            )
+
+            return
+        }
+
+        guard
+            gate.long.enabled
+            || gate.short.enabled
+        else {
+            sealedHoldoutMessage =
+                "No direction passed the development gate, so there is no frozen architecture to evaluate."
+
+            log(
+                "warning",
+                sealedHoldoutMessage
+            )
+
+            return
+        }
+
+        guard
+            !isEvaluatingSealedHoldout
+        else {
+            return
+        }
+
+        let architectureID =
+            makeSealedHoldoutArchitectureID(
+                asset: asset,
+                lockedPolicy:
+                    locked,
+                gate: gate,
+                holdoutStart:
+                    holdoutStart
+            )
+
+        if let existing =
+            sealedHoldoutBySymbol[
+                asset.symbol
+            ] {
+
+            if existing.holdoutStart
+                == holdoutStart {
+
+                sealedHoldoutMessage =
+                    "This sealed holdout was already consumed on \(existing.evaluatedAt.formatted()). It cannot be reopened for another architecture."
+
+                log(
+                    "warning",
+                    sealedHoldoutMessage
+                )
+
+                return
+            }
+
+            if holdoutStart
+                <= existing.holdoutEnd {
+
+                sealedHoldoutMessage =
+                    "The proposed holdout overlaps a previously consumed holdout. Add new future data before creating another final holdout."
+
+                log(
+                    "warning",
+                    sealedHoldoutMessage
+                )
+
+                return
+            }
+        }
+
+        let rows =
+            researchRows
+
+        guard
+            !rows.isEmpty,
+            summary.usesLockedPolicy
+        else {
+            sealedHoldoutMessage =
+                "Rebuild the research dataset with the locked label policy before opening the holdout."
+
+            log(
+                "warning",
+                sealedHoldoutMessage
+            )
+
+            return
+        }
+
+        var contextBars:
+            [String: [MarketBar]] = [:]
+
+        let requiredContext =
+            gate.long.variant
+                == .marketContext28
+            || gate.short.variant
+                == .marketContext28
+
+        if requiredContext {
+            for symbol in [
+                "SPY",
+                "IWM",
+                "VIXY"
+            ] {
+                contextBars[symbol] =
+                    (try? await repository.load(
+                        symbol: symbol,
+                        timeframe: "1min"
+                    ))
+                    ?? []
+            }
+        }
+
+        isEvaluatingSealedHoldout =
+            true
+
+        sealedHoldoutMessage =
+            "Opening the sealed holdout once. The result will be persisted and this holdout cannot be reused for tuning."
+
+        log(
+            "warning",
+            sealedHoldoutMessage
+        )
+
+        defer {
+            isEvaluatingSealedHoldout =
+                false
+        }
+
+        let result =
+            await Task.detached(
+                priority:
+                    .userInitiated
+            ) {
+                BaselineModelEngine
+                    .runSealedHoldout(
+                        architectureID:
+                            architectureID,
+                        symbol:
+                            asset.symbol,
+                        signalMode:
+                            gate.mode,
+                        lockedPolicy:
+                            locked,
+                        rows: rows,
+                        holdoutStart:
+                            holdoutStart,
+                        holdoutEnd:
+                            holdoutEnd,
+                        longVariant:
+                            gate.long.enabled
+                            ? gate.long.variant
+                            : nil,
+                        shortVariant:
+                            gate.short.enabled
+                            ? gate.short.variant
+                            : nil,
+                        contextBars:
+                            contextBars
+                    )
+            }
+            .value
+
+        guard let result else {
+            sealedHoldoutMessage =
+                "Sealed holdout evaluation could not be completed. No holdout result was stored."
+
+            log(
+                "error",
+                sealedHoldoutMessage
+            )
+
+            return
+        }
+
+        sealedHoldoutBySymbol[
+            asset.symbol
+        ] = result
+
+        saveSealedHoldoutEvaluations()
+
+        let directionSummary =
+            result.directions
+                .map {
+                    direction in
+
+                    let skill =
+                        Int(
+                            round(
+                                direction
+                                    .brierSkill
+                                * 100
+                            )
+                        )
+
+                    return "\(direction.direction.rawValue) \(skill)%"
+                }
+                .joined(
+                    separator: " · "
+                )
+
+        sealedHoldoutMessage =
+            "Sealed holdout consumed: \(directionSummary) Brier skill. This result is final for the current holdout; further tuning requires new future data."
+
+        log(
+            result.preliminaryPass
+            ? "info"
+            : "warning",
+            sealedHoldoutMessage
+        )
+    }
+
+    private func makeSealedHoldoutArchitectureID(
+        asset: AssetConfig,
+        lockedPolicy:
+            LockedLabelPolicyRecord,
+        gate:
+            BaselineDirectionalGateSummary,
+        holdoutStart: Date
+    ) -> String {
+        let longPart =
+            gate.long.enabled
+            ? (
+                gate.long.variant?
+                    .rawValue
+                ?? "none"
+            )
+            : "NO_TRADE"
+
+        let shortPart =
+            gate.short.enabled
+            ? (
+                gate.short.variant?
+                    .rawValue
+                ?? "none"
+            )
+            : "NO_TRADE"
+
+        return [
+            "phase2d-v1",
+            asset.symbol,
+            lockedPolicy.policy.id,
+            gate.mode,
+            "L:\(longPart)",
+            "S:\(shortPart)",
+            "H:\(Int(holdoutStart.timeIntervalSince1970))"
+        ]
+        .joined(
+            separator: "|"
+        )
+    }
+
     func prepareDiagnostics() {
         let shortVersion = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleShortVersionString"
@@ -2504,6 +2821,62 @@ final class AppStore: ObservableObject {
 
         } catch {
             lockedLabelPolicies = [:]
+        }
+    }
+
+    private func saveSealedHoldoutEvaluations() {
+        do {
+            let encoder =
+                JSONEncoder()
+
+            encoder.dateEncodingStrategy =
+                .iso8601
+
+            let data =
+                try encoder.encode(
+                    sealedHoldoutBySymbol
+                )
+
+            UserDefaults.standard.set(
+                data,
+                forKey:
+                    sealedHoldoutDefaultsKey
+            )
+
+        } catch {
+            print(
+                "Could not save sealed holdout evaluations:",
+                error.localizedDescription
+            )
+        }
+    }
+
+    private func loadSealedHoldoutEvaluations() {
+        guard
+            let data =
+                UserDefaults.standard.data(
+                    forKey:
+                        sealedHoldoutDefaultsKey
+                )
+        else {
+            return
+        }
+
+        do {
+            let decoder =
+                JSONDecoder()
+
+            decoder.dateDecodingStrategy =
+                .iso8601
+
+            sealedHoldoutBySymbol =
+                try decoder.decode(
+                    [String: SealedHoldoutEvaluation].self,
+                    from: data
+                )
+
+        } catch {
+            sealedHoldoutBySymbol = [:]
         }
     }
 
