@@ -158,6 +158,8 @@ struct ResearchHubView: View {
 
                 baselineSection
 
+                directionalGateSection
+
             } else {
                 emptyResearchState
             }
@@ -1035,7 +1037,7 @@ struct ResearchHubView: View {
 
                         MetricTile(
                             title:
-                                "Recommended",
+                                "Balanced best",
                             value:
                                 result
                                     .variant
@@ -1082,7 +1084,7 @@ struct ResearchHubView: View {
                                                         .variant {
 
                                                     Text(
-                                                        "RECOMMENDED"
+                                                        "BALANCED BEST"
                                                     )
                                                     .font(
                                                         .caption2
@@ -1511,6 +1513,160 @@ struct ResearchHubView: View {
                         .secondary
                     )
                 }
+            }
+        }
+    }
+
+    private var directionalGateSection: some View {
+        Group {
+            if let gate =
+                store.baselineDirectionalGate {
+
+                ResearchCard(
+                    title:
+                        "Phase 2D · Directional Signal Gate",
+                    subtitle:
+                        "Development-only architecture decision · LONG and SHORT are evaluated independently · sealed holdout still untouched"
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 12
+                    ) {
+                        HStack(spacing: 12) {
+                            MetricTile(
+                                title:
+                                    "Signal mode",
+                                value:
+                                    gate.mode,
+                                subtitle:
+                                    "NO_TRADE is a valid output"
+                            )
+
+                            MetricTile(
+                                title:
+                                    "LONG gate",
+                                value:
+                                    gate.long.enabled
+                                    ? "ENABLED"
+                                    : "NO_TRADE",
+                                subtitle:
+                                    "\(gate.long.variant?.title ?? "None") · \(percent(gate.long.meanSkill))"
+                            )
+
+                            MetricTile(
+                                title:
+                                    "SHORT gate",
+                                value:
+                                    gate.short.enabled
+                                    ? "ENABLED"
+                                    : "NO_TRADE",
+                                subtitle:
+                                    "\(gate.short.variant?.title ?? "None") · \(percent(gate.short.meanSkill))"
+                            )
+
+                            MetricTile(
+                                title:
+                                    "Sealed holdout",
+                                value:
+                                    store.researchSummary?
+                                        .sealedHoldoutSessionCount
+                                        .description
+                                    ?? "0",
+                                subtitle:
+                                    "Still unopened"
+                            )
+                        }
+
+                        VStack(
+                            alignment: .leading,
+                            spacing: 8
+                        ) {
+                            HStack(
+                                alignment: .top,
+                                spacing: 10
+                            ) {
+                                Image(
+                                    systemName:
+                                        gate.long.enabled
+                                        ? "checkmark.seal.fill"
+                                        : "nosign"
+                                )
+                                .foregroundStyle(
+                                    gate.long.enabled
+                                    ? Color.green
+                                    : Color.orange
+                                )
+
+                                VStack(
+                                    alignment:
+                                        .leading,
+                                    spacing: 2
+                                ) {
+                                    Text(
+                                        "LONG · \(gate.long.variant?.title ?? "No model")"
+                                    )
+                                    .font(
+                                        .callout.bold()
+                                    )
+
+                                    Text(
+                                        "\(gate.long.positiveFoldCount)/\(gate.long.foldCount) development folds have positive Brier skill; worst fold \(percent(gate.long.worstFoldSkill)). \(gate.long.reason)"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        .secondary
+                                    )
+                                }
+                            }
+
+                            HStack(
+                                alignment: .top,
+                                spacing: 10
+                            ) {
+                                Image(
+                                    systemName:
+                                        gate.short.enabled
+                                        ? "checkmark.seal.fill"
+                                        : "nosign"
+                                )
+                                .foregroundStyle(
+                                    gate.short.enabled
+                                    ? Color.green
+                                    : Color.orange
+                                )
+
+                                VStack(
+                                    alignment:
+                                        .leading,
+                                    spacing: 2
+                                ) {
+                                    Text(
+                                        "SHORT · \(gate.short.variant?.title ?? "No model")"
+                                    )
+                                    .font(
+                                        .callout.bold()
+                                    )
+
+                                    Text(
+                                        "\(gate.short.positiveFoldCount)/\(gate.short.foldCount) development folds have positive Brier skill; worst fold \(percent(gate.short.worstFoldSkill)). \(gate.short.reason)"
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        .secondary
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            "This gate does not open the sealed holdout and does not yet emit live signals. It freezes the development architecture: only directions with positive average skill and at least two positive OOS development folds are eligible for the next stage."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(
+                            .secondary
+                        )
+                    }
+                )
             }
         }
     }
