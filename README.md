@@ -193,3 +193,21 @@ The action:
 - automatically reruns the Core 16 / Self Regime 22 / Market Context 28 comparison after the context download finishes.
 
 This avoids the previous ambiguity where the generic Context bulk scope did not include SPY because SPY is a tradeable asset.
+
+
+## Phase 2C.5 — Nested ridge regularization
+
+The Core 16 candidate remained best while Self Regime 22 and Market Context 28 degraded development OOS performance. Before adding more model complexity, the logistic baseline now tunes L2 regularization causally inside each training block.
+
+For every outer walk-forward fold and direction:
+
+- the outer training sessions are split chronologically into inner train and inner validation sessions;
+- L2 is selected from a fixed grid using inner-validation Brier score only;
+- the final logistic model is refit on the full outer training block with the selected L2;
+- outer validation remains reserved for Platt calibration and decision-threshold selection;
+- outer test remains development OOS only;
+- the sealed holdout remains untouched.
+
+The selected L2 is shown per fold in Research.
+
+This change targets the likely overfitting/multicollinearity exposed by the larger feature sets without adding a neural model prematurely.
