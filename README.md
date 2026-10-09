@@ -211,3 +211,20 @@ For every outer walk-forward fold and direction:
 The selected L2 is shown per fold in Research.
 
 This change targets the likely overfitting/multicollinearity exposed by the larger feature sets without adding a neural model prematurely.
+
+
+## Phase 2D — Asymmetric directional gate
+
+Nested ridge regularization materially reduced the SHORT degradation, but no SHORT candidate achieved positive mean development Brier skill. At the same time, the Core 16 LONG candidate remained positive.
+
+The architecture therefore stops forcing one model to serve both directions.
+
+The new development gate selects the best candidate independently for LONG and SHORT and enables a direction only when:
+
+- mean development Brier skill is positive;
+- at least two of three development OOS folds have positive skill;
+- at least three folds are available.
+
+If a direction fails the gate, its output is explicitly NO_TRADE.
+
+This development gate does not open the sealed holdout and does not yet create live signals. It is the architecture-freeze step before final development fitting and one-time sealed holdout evaluation.
