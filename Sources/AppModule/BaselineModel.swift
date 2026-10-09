@@ -331,7 +331,28 @@ struct BaselineExperimentResult:
     var directionalGate:
         BaselineDirectionalGateSummary {
 
-        BaselineDirectionalGateSummary(
+        Self.directionalGate(
+            for: candidates
+        )
+    }
+
+    static func directionalGate(
+        for candidates:
+            [BaselineRunResult]
+    ) -> BaselineDirectionalGateSummary {
+        let bestLong =
+            candidates.max {
+                $0.meanLongSkill
+                    < $1.meanLongSkill
+            }
+
+        let bestShort =
+            candidates.max {
+                $0.meanShortSkill
+                    < $1.meanShortSkill
+            }
+
+        return BaselineDirectionalGateSummary(
             long:
                 Self.makeGate(
                     direction: .long,
