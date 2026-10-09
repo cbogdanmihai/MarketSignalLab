@@ -2517,6 +2517,9 @@ final class AppStore: ObservableObject {
         let directionalGate =
             baselineDirectionalGate
 
+        let sealedHoldout =
+            selectedSealedHoldoutEvaluation
+
         let recentEvents =
             Array(
                 diagnosticEvents
@@ -2638,6 +2641,23 @@ final class AppStore: ObservableObject {
                     .meanSkill,
             baselineMessage:
                 baselineMessage,
+            sealedHoldoutConsumed:
+                sealedHoldout != nil,
+            sealedHoldoutEvaluatedAt:
+                sealedHoldout?
+                    .evaluatedAt,
+            sealedHoldoutSignalMode:
+                sealedHoldout?
+                    .signalMode,
+            sealedHoldoutPreliminaryPass:
+                sealedHoldout?
+                    .preliminaryPass,
+            sealedHoldoutDirections:
+                sealedHoldout?
+                    .directions
+                ?? [],
+            sealedHoldoutMessage:
+                sealedHoldoutMessage,
             availableCount:
                 availableCount,
             restrictedCount:
