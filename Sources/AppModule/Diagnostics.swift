@@ -59,6 +59,13 @@ struct DiagnosticsSnapshot: Codable, Sendable {
     let baselinePassesInitialGate: Bool?
     let baselineMeanLongSkill: Double?
     let baselineMeanShortSkill: Double?
+    let baselineSignalMode: String?
+    let baselineLongGateEnabled: Bool?
+    let baselineLongGateVariant: String?
+    let baselineLongGateSkill: Double?
+    let baselineShortGateEnabled: Bool?
+    let baselineShortGateVariant: String?
+    let baselineShortGateSkill: Double?
     let baselineMessage: String
 
     let availableCount: Int
