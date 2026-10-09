@@ -8,9 +8,9 @@ struct AppInfoView: View {
     @EnvironmentObject
     private var store: AppStore
 
-    private let fallbackVersion = "0.7.7"
-    private let fallbackBuild = "39"
-    private let releaseName = "Phase 2D — Asymmetric Directional Gate"
+    private let fallbackVersion = "0.7.8"
+    private let fallbackBuild = "40"
+    private let releaseName = "Phase 2E — One-Time Sealed Holdout"
     private let repositoryName = "cbogdanmihai/MarketSignalLab.swiftpm"
     private let sourceBranch = "main"
 
@@ -321,6 +321,29 @@ struct AppInfoView: View {
                                         .enabled
                                     ? "ENABLED · \(variant)"
                                     : "NO_TRADE · \(variant)"
+                                }
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "Sealed holdout",
+                        value:
+                            store
+                                .selectedSealedHoldoutEvaluation
+                                == nil
+                            ? "SEALED"
+                            : "CONSUMED"
+                    )
+
+                    LabeledContent(
+                        "Holdout result",
+                        value:
+                            store
+                                .selectedSealedHoldoutEvaluation
+                                .map {
+                                    $0.preliminaryPass
+                                    ? "PASS"
+                                    : "MISS"
                                 }
                             ?? "—"
                     )
