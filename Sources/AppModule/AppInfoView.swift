@@ -273,6 +273,59 @@ struct AppInfoView: View {
                     )
 
                     LabeledContent(
+                        "Signal mode",
+                        value:
+                            store
+                                .baselineDirectionalGate?
+                                .mode
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "LONG gate",
+                        value:
+                            store
+                                .baselineDirectionalGate
+                                .map {
+                                    gate in
+
+                                    let variant =
+                                        gate.long
+                                            .variant?
+                                            .title
+                                        ?? "None"
+
+                                    return gate.long
+                                        .enabled
+                                    ? "ENABLED · \(variant)"
+                                    : "NO_TRADE · \(variant)"
+                                }
+                            ?? "—"
+                    )
+
+                    LabeledContent(
+                        "SHORT gate",
+                        value:
+                            store
+                                .baselineDirectionalGate
+                                .map {
+                                    gate in
+
+                                    let variant =
+                                        gate.short
+                                            .variant?
+                                            .title
+                                        ?? "None"
+
+                                    return gate.short
+                                        .enabled
+                                    ? "ENABLED · \(variant)"
+                                    : "NO_TRADE · \(variant)"
+                                }
+                            ?? "—"
+                    )
+
+                    LabeledContent(
                         "Bulk history",
                         value:
                             store.isDownloadingAllHistory
