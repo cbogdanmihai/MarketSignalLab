@@ -1666,7 +1666,7 @@ struct ResearchHubView: View {
                             .secondary
                         )
                     }
-                )
+                }
             }
         }
     }
