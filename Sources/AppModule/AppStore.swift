@@ -2103,22 +2103,6 @@ final class AppStore: ObservableObject {
                 asset.symbol
             ] = result
 
-            let longSkill =
-                Int(
-                    round(
-                        result.meanLongSkill
-                        * 100
-                    )
-                )
-
-            let shortSkill =
-                Int(
-                    round(
-                        result.meanShortSkill
-                        * 100
-                    )
-                )
-
             let contextCandidate =
                 experiment.candidates.first {
                     $0.variant
