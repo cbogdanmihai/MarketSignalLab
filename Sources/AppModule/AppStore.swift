@@ -2213,6 +2213,9 @@ final class AppStore: ObservableObject {
         let baseline =
             baselineResult
 
+        let directionalGate =
+            baselineDirectionalGate
+
         let recentEvents =
             Array(
                 diagnosticEvents
@@ -2303,6 +2306,35 @@ final class AppStore: ObservableObject {
             baselineMeanShortSkill:
                 baseline?
                     .meanShortSkill,
+            baselineSignalMode:
+                directionalGate?
+                    .mode,
+            baselineLongGateEnabled:
+                directionalGate?
+                    .long
+                    .enabled,
+            baselineLongGateVariant:
+                directionalGate?
+                    .long
+                    .variant?
+                    .title,
+            baselineLongGateSkill:
+                directionalGate?
+                    .long
+                    .meanSkill,
+            baselineShortGateEnabled:
+                directionalGate?
+                    .short
+                    .enabled,
+            baselineShortGateVariant:
+                directionalGate?
+                    .short
+                    .variant?
+                    .title,
+            baselineShortGateSkill:
+                directionalGate?
+                    .short
+                    .meanSkill,
             baselineMessage:
                 baselineMessage,
             availableCount:
