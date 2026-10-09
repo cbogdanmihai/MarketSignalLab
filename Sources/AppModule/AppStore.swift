@@ -138,6 +138,22 @@ final class AppStore: ObservableObject {
     var baselineContextMessage =
         "Market context requires SPY, IWM and VIXY 1-minute history aligned to the selected research period."
 
+    var baselineDirectionalGate:
+        BaselineDirectionalGateSummary? {
+
+        guard
+            !baselineCandidates.isEmpty
+        else {
+            return nil
+        }
+
+        return BaselineExperimentResult
+            .directionalGate(
+                for:
+                    baselineCandidates
+            )
+    }
+
     @Published private(set)
     var isBuildingAllResearch = false
 
@@ -2114,19 +2130,31 @@ final class AppStore: ObservableObject {
                 ? " Market Context was not run because SPY/IWM/VIXY coverage is below 70%; download matching context history."
                 : ""
 
-            if result.passesInitialGate {
-                baselineMessage =
-                    "Baseline experiment complete. Recommended \(result.variant.title): LONG \(longSkill)%, SHORT \(shortSkill)% Brier skill. Initial gate passed.\(contextNote)"
+            let directionalGate =
+                experiment.directionalGate
 
-            } else {
-                baselineMessage =
-                    "Baseline experiment complete. Recommended \(result.variant.title): LONG \(longSkill)%, SHORT \(shortSkill)% Brier skill. Gate remains REVIEW.\(contextNote)"
-            }
+            let longModel =
+                directionalGate
+                    .long
+                    .variant?
+                    .title
+                ?? "None"
+
+            let shortModel =
+                directionalGate
+                    .short
+                    .variant?
+                    .title
+                ?? "None"
+
+            baselineMessage =
+                "Baseline experiment complete. Development selector: \(directionalGate.mode). LONG \(longModel) \(directionalGate.long.enabled ? "ENABLED" : "NO_TRADE") at \(Int(round(directionalGate.long.meanSkill * 100)))% mean Brier skill; SHORT \(shortModel) \(directionalGate.short.enabled ? "ENABLED" : "NO_TRADE") at \(Int(round(directionalGate.short.meanSkill * 100)))%.\(contextNote)"
 
             log(
-                result.passesInitialGate
-                ? "info"
-                : "warning",
+                directionalGate.mode
+                    == "NO_TRADE"
+                ? "warning"
+                : "info",
                 baselineMessage
             )
 
