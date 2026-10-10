@@ -580,6 +580,15 @@ enum BaselineModelEngine {
         contextBars:
             [String: [MarketBar]]
     ) -> BaselineExperimentResult {
+        if Task.isCancelled {
+            return BaselineExperimentResult(
+                symbol: symbol,
+                generatedAt: Date(),
+                candidates: [],
+                recommendedVariant: nil
+            )
+        }
+
         let selfRegime =
             buildSelfRegimeFeatures(
                 rows: rows
@@ -619,6 +628,18 @@ enum BaselineModelEngine {
             )
         )
 
+        if Task.isCancelled {
+            return BaselineExperimentResult(
+                symbol: symbol,
+                generatedAt: Date(),
+                candidates:
+                    candidates,
+                recommendedVariant:
+                    candidates.first?
+                        .variant
+            )
+        }
+
         candidates.append(
             run(
                 variant:
@@ -636,7 +657,9 @@ enum BaselineModelEngine {
             )
         )
 
-        if marketCoverage >= 0.70 {
+        if !Task.isCancelled,
+           marketCoverage >= 0.70 {
+
             candidates.append(
                 run(
                     variant:
@@ -1244,10 +1267,18 @@ enum BaselineModelEngine {
             [BaselineFoldResult] = []
 
         for fold in folds {
+            if Task.isCancelled {
+                break
+            }
+
             for direction in [
                 BaselineDirection.long,
                 BaselineDirection.short
             ] {
+                if Task.isCancelled {
+                    break
+                }
+
                 if let result =
                     runFold(
                         fold: fold,
