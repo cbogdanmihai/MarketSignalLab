@@ -938,8 +938,16 @@ final class AppStore: ObservableObject {
 
         historyTotalChunks = chunks.count
 
+        beginHistoryRun(
+            requestCount:
+                chunks.count,
+            label:
+                "Selected-symbol history"
+        )
+
         defer {
             isDownloadingHistory = false
+            finishHistoryRun()
         }
 
         let provider = TwelveDataProvider(
@@ -952,8 +960,29 @@ final class AppStore: ObservableObject {
         )
 
         for (index, chunk) in chunks.enumerated() {
+            if let reason =
+                historyAbortReason() {
+
+                historyMessage =
+                    reason
+
+                log(
+                    "warning",
+                    reason
+                )
+
+                return
+            }
+
+            let requestDescription =
+                "\(asset.symbol) chunk \(index + 1)/\(chunks.count)"
+
             historyMessage =
-                "Downloading \(asset.symbol) chunk \(index + 1) / \(chunks.count)…"
+                "Downloading \(requestDescription)…"
+
+            markHistoryRequestStart(
+                requestDescription
+            )
 
             do {
                 let downloaded =
@@ -970,13 +999,24 @@ final class AppStore: ObservableObject {
 
                 historyBarsSaved += downloaded.count
 
+                markHistoryProgress(
+                    "\(requestDescription) · \(downloaded.count) bars"
+                )
+
             } catch let error as MarketDataError {
                 if case .noData = error {
+                    markHistoryProgress(
+                        "\(requestDescription) · no data"
+                    )
+
                     log(
                         "info",
                         "No bars in historical chunk \(index + 1) for \(asset.symbol); continuing."
                     )
                 } else {
+                    markHistoryProgress(
+                        "\(requestDescription) · failed"
+                    )
                     historyMessage =
                         "Historical import stopped: \(error.localizedDescription)"
 
@@ -990,6 +1030,10 @@ final class AppStore: ObservableObject {
                 }
 
             } catch {
+                markHistoryProgress(
+                    "\(requestDescription) · failed"
+                )
+
                 historyMessage =
                     "Historical import stopped: \(error.localizedDescription)"
 
