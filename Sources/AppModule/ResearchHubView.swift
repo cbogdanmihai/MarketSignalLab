@@ -1000,7 +1000,7 @@ struct ResearchHubView: View {
                 if store.isPreparingBaselineContext {
                     VStack(
                         alignment: .leading,
-                        spacing: 5
+                        spacing: 8
                     ) {
                         ProgressView()
 
@@ -1015,9 +1015,31 @@ struct ResearchHubView: View {
                                 .secondary
                             )
                         }
+
+                        HistoryRunMonitorView()
+                            .environmentObject(
+                                store
+                            )
                     }
                 } else if store.isTrainingBaseline {
-                    ProgressView()
+                    VStack(
+                        alignment: .leading,
+                        spacing: 8
+                    ) {
+                        ProgressView()
+
+                        BaselineRunMonitorView()
+                            .environmentObject(
+                                store
+                            )
+                    }
+                } else if store.baselineLastRunDuration
+                    != nil {
+
+                    BaselineRunMonitorView()
+                        .environmentObject(
+                            store
+                        )
                 }
 
                 if let result =
