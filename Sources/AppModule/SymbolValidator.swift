@@ -62,7 +62,8 @@ struct TwelveDataSymbolValidator: SymbolValidator {
 
             case .invalidURL,
                  .decoding,
-                 .invalidTimezone:
+                 .invalidTimezone,
+                 .requestTimedOut:
                 return AssetValidationState(
                     availability: .error,
                     message: error.localizedDescription,
