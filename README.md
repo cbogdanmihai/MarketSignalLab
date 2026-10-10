@@ -250,3 +250,40 @@ The holdout report includes Brier skill vs the calibration-prior no-skill baseli
 A consumed holdout must not be used for another round of model tuning. Any architecture change after seeing the holdout requires new future data and a new sealed holdout.
 
 The current QQQ holdout contains only a small number of independent sessions, so a positive result is an initial OOS confirmation rather than production-grade proof.
+
+
+## Runtime safety and stuck-task protection
+
+Version 0.7.9 adds explicit protection against operations that appear to run indefinitely in Swift Playgrounds.
+
+### Baseline training
+
+The nested-ridge baseline was previously too expensive on iPad because every feature variant, fold and direction trained many full 120-epoch logistic models across an eight-value regularization grid.
+
+The bounded implementation now:
+
+- uses four L2 candidates instead of eight;
+- uses 25 epochs for inner regularization selection;
+- caps inner tuning to 2,000 evenly sampled examples;
+- uses 60 epochs for the final outer fit;
+- checks Task cancellation inside the optimizer;
+- exposes a live elapsed timer;
+- provides Cancel Training;
+- automatically cancels a baseline run after 5 minutes;
+- discards partial results after cancellation.
+
+### Historical downloads
+
+Historical data operations now expose:
+
+- elapsed runtime;
+- current-request runtime;
+- time since last progress;
+- watchdog time remaining;
+- current symbol/chunk;
+- Cancel;
+- per-request start/end logs.
+
+Twelve Data HTTP calls now use an explicit 30-second request timeout. Bulk runs have a computed watchdog based on request count, with a safety floor and cap, so an overnight spinner is no longer treated as normal operation.
+
+Console output includes tagged HTTP timing lines without exposing the API key.
