@@ -60,6 +60,34 @@ final class AppStore: ObservableObject {
         "Bulk historical downloader ready."
 
     @Published private(set)
+    var historyRunStartedAt: Date?
+
+    @Published private(set)
+    var historyLastProgressAt: Date?
+
+    @Published private(set)
+    var historyCurrentRequestStartedAt: Date?
+
+    @Published private(set)
+    var historyRunDeadline: Date?
+
+    @Published private(set)
+    var historyLastRunDuration:
+        TimeInterval?
+
+    @Published private(set)
+    var historyCancellationRequested =
+        false
+
+    @Published private(set)
+    var historyCurrentRequestDescription =
+        ""
+
+    @Published private(set)
+    var historyWatchdogMessage =
+        "History watchdog idle."
+
+    @Published private(set)
     var researchRows: [ResearchRow] = []
 
     @Published private(set)
@@ -1292,6 +1320,186 @@ final class AppStore: ObservableObject {
             "info",
             historyBatchMessage
         )
+    }
+
+    func cancelHistoricalDownload() {
+        guard isDownloadingHistory else {
+            return
+        }
+
+        historyCancellationRequested =
+            true
+
+        historyWatchdogMessage =
+            "Cancel requested. Waiting for the current request to exit (maximum HTTP timeout: 30s)."
+
+        historyMessage =
+            historyWatchdogMessage
+
+        historyBatchMessage =
+            historyWatchdogMessage
+
+        log(
+            "warning",
+            historyWatchdogMessage
+        )
+    }
+
+    private func beginHistoryRun(
+        requestCount: Int,
+        label: String
+    ) {
+        let now = Date()
+
+        let expectedSeconds =
+            Double(
+                max(
+                    requestCount,
+                    1
+                )
+            )
+            * 12.0
+            + 300.0
+
+        let maximumSeconds =
+            min(
+                max(
+                    expectedSeconds,
+                    600.0
+                ),
+                10_800.0
+            )
+
+        historyRunStartedAt =
+            now
+
+        historyLastProgressAt =
+            now
+
+        historyCurrentRequestStartedAt =
+            nil
+
+        historyLastRunDuration =
+            nil
+
+        historyCancellationRequested =
+            false
+
+        historyRunDeadline =
+            now.addingTimeInterval(
+                maximumSeconds
+            )
+
+        historyCurrentRequestDescription =
+            ""
+
+        historyWatchdogMessage =
+            "\(label) watchdog armed for approximately \(Int(maximumSeconds / 60)) min maximum runtime."
+
+        log(
+            "info",
+            historyWatchdogMessage
+        )
+    }
+
+    private func finishHistoryRun() {
+        if let started =
+            historyRunStartedAt {
+
+            historyLastRunDuration =
+                Date()
+                    .timeIntervalSince(
+                        started
+                    )
+        }
+
+        historyRunStartedAt = nil
+        historyCurrentRequestStartedAt =
+            nil
+        historyRunDeadline = nil
+        historyCurrentRequestDescription =
+            ""
+
+        if historyCancellationRequested {
+            historyWatchdogMessage =
+                "History run stopped by cancellation."
+        } else {
+            historyWatchdogMessage =
+                "History run finished."
+        }
+
+        historyCancellationRequested =
+            false
+    }
+
+    private func markHistoryRequestStart(
+        _ description: String
+    ) {
+        historyCurrentRequestStartedAt =
+            Date()
+
+        historyCurrentRequestDescription =
+            description
+
+        log(
+            "info",
+            "History request START · \(description)"
+        )
+    }
+
+    private func markHistoryProgress(
+        _ description: String
+    ) {
+        let now = Date()
+
+        historyLastProgressAt =
+            now
+
+        let requestElapsed =
+            historyCurrentRequestStartedAt
+                .map {
+                    now.timeIntervalSince(
+                        $0
+                    )
+                }
+
+        historyCurrentRequestStartedAt =
+            nil
+
+        historyCurrentRequestDescription =
+            ""
+
+        if let requestElapsed {
+            log(
+                "info",
+                "History request END · \(description) · \(String(format: "%.1f", requestElapsed))s"
+            )
+        } else {
+            log(
+                "info",
+                "History progress · \(description)"
+            )
+        }
+    }
+
+    private func historyAbortReason()
+        -> String? {
+
+        if historyCancellationRequested {
+            return "History download cancelled by user."
+        }
+
+        if let deadline =
+            historyRunDeadline,
+           Date() > deadline {
+
+            historyCancellationRequested =
+                true
+
+            return "History watchdog stopped the run because it exceeded the expected maximum runtime."
+        }
+
+        return nil
     }
 
     private func invalidateResearchCaches(
