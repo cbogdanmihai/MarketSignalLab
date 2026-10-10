@@ -128,9 +128,75 @@ struct TwelveDataProvider: MarketDataProvider {
 
         try await TwelveDataRateLimiter.shared.waitForTurn()
 
-        let (data, response) = try await URLSession.shared.data(
-            from: url
+        let timeoutSeconds = 30
+
+        var request =
+            URLRequest(
+                url: url
+            )
+
+        request.timeoutInterval =
+            TimeInterval(
+                timeoutSeconds
+            )
+
+        let requestStartedAt =
+            Date()
+
+        print(
+            "[MarketSignalLab][HTTP] START \(asset.symbol) \(interval)"
         )
+
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) =
+                try await URLSession.shared.data(
+                    for: request
+                )
+
+        } catch let error as URLError {
+            let elapsed =
+                Date()
+                    .timeIntervalSince(
+                        requestStartedAt
+                    )
+
+            print(
+                "[MarketSignalLab][HTTP] FAIL \(asset.symbol) \(interval) after \(String(format: "%.1f", elapsed))s: \(error.localizedDescription)"
+            )
+
+            if error.code == .timedOut {
+                throw MarketDataError
+                    .requestTimedOut(
+                        seconds:
+                            timeoutSeconds
+                    )
+            }
+
+            throw error
+        }
+
+        let elapsed =
+            Date()
+                .timeIntervalSince(
+                    requestStartedAt
+                )
+
+        if let http =
+            response as?
+                HTTPURLResponse {
+
+            print(
+                "[MarketSignalLab][HTTP] END \(asset.symbol) \(interval) HTTP \(http.statusCode) in \(String(format: "%.1f", elapsed))s"
+            )
+
+        } else {
+            print(
+                "[MarketSignalLab][HTTP] END \(asset.symbol) \(interval) in \(String(format: "%.1f", elapsed))s"
+            )
+        }
 
         let decoder = JSONDecoder()
 
