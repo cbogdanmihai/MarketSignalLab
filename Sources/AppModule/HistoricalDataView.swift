@@ -151,6 +151,18 @@ struct HistoricalDataView: View {
                     )
                 }
 
+                if store.isDownloadingHistory
+                    || store.historyLastRunDuration
+                        != nil {
+
+                    Section("Download monitor") {
+                        HistoryRunMonitorView()
+                            .environmentObject(
+                                store
+                            )
+                    }
+                }
+
                 Section("Selected symbol") {
                     LabeledContent(
                         "Bars",
