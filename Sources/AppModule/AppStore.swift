@@ -1163,6 +1163,13 @@ final class AppStore: ObservableObject {
             * assets.count
         historyBarsSaved = 0
 
+        beginHistoryRun(
+            requestCount:
+                historyTotalChunks,
+            label:
+                "Bulk history"
+        )
+
         defer {
             isDownloadingAllHistory =
                 false
@@ -1170,6 +1177,7 @@ final class AppStore: ObservableObject {
                 false
             historyBatchCurrentSymbol =
                 nil
+            finishHistoryRun()
         }
 
         let provider =
@@ -1183,6 +1191,20 @@ final class AppStore: ObservableObject {
         )
 
         for asset in assets {
+            if let reason =
+                historyAbortReason() {
+
+                historyBatchMessage =
+                    reason
+
+                log(
+                    "warning",
+                    reason
+                )
+
+                return
+            }
+
             historyBatchCurrentSymbol =
                 asset.symbol
 
@@ -1213,6 +1235,10 @@ final class AppStore: ObservableObject {
                         asset.symbol
                     ] = stats
 
+                    markHistoryProgress(
+                        "\(asset.symbol) skipped · requested range already covered"
+                    )
+
                     log(
                         "info",
                         "Bulk history skipped \(asset.symbol): requested range already covered."
@@ -1234,8 +1260,29 @@ final class AppStore: ObservableObject {
                 chunk
             ) in chunks.enumerated() {
 
+                if let reason =
+                    historyAbortReason() {
+
+                    historyBatchMessage =
+                        reason
+
+                    log(
+                        "warning",
+                        reason
+                    )
+
+                    return
+                }
+
+                let requestDescription =
+                    "\(asset.symbol) chunk \(chunkIndex + 1)/\(chunks.count) · asset \(historyBatchCompletedAssets + 1)/\(assets.count)"
+
                 historyBatchMessage =
-                    "Downloading \(asset.symbol) · chunk \(chunkIndex + 1)/\(chunks.count) · asset \(historyBatchCompletedAssets + 1)/\(assets.count)…"
+                    "Downloading \(requestDescription)…"
+
+                markHistoryRequestStart(
+                    requestDescription
+                )
 
                 do {
                     let downloaded =
@@ -1258,16 +1305,28 @@ final class AppStore: ObservableObject {
                     historyBarsSaved +=
                         downloaded.count
 
+                    markHistoryProgress(
+                        "\(requestDescription) · \(downloaded.count) bars"
+                    )
+
                 } catch let error
                     as MarketDataError {
 
                     if case .noData = error {
+                        markHistoryProgress(
+                            "\(requestDescription) · no data"
+                        )
+
                         log(
                             "info",
                             "No bars in bulk chunk \(chunkIndex + 1) for \(asset.symbol); continuing."
                         )
 
                     } else {
+                        markHistoryProgress(
+                            "\(requestDescription) · failed"
+                        )
+
                         failed = true
 
                         log(
@@ -1279,6 +1338,10 @@ final class AppStore: ObservableObject {
                     }
 
                 } catch {
+                    markHistoryProgress(
+                        "\(requestDescription) · failed"
+                    )
+
                     failed = true
 
                     log(
