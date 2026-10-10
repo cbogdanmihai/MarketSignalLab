@@ -1001,7 +1001,8 @@ enum BaselineModelEngine {
         let model =
             trainLogistic(
                 examples: train,
-                l2: selectedL2
+                l2: selectedL2,
+                epochs: 60
             )
 
         let calibrationRawProbabilities =
@@ -1437,7 +1438,8 @@ enum BaselineModelEngine {
         let model =
             trainLogistic(
                 examples: train,
-                l2: selectedL2
+                l2: selectedL2,
+                epochs: 60
             )
 
         let trainPrevalence =
@@ -2148,7 +2150,8 @@ enum BaselineModelEngine {
 
     private static func trainLogistic(
         examples: [Example],
-        l2: Double
+        l2: Double,
+        epochs: Int
     ) -> LogisticModel {
         guard
             let first =
@@ -2184,7 +2187,6 @@ enum BaselineModelEngine {
                 / (1 - prior)
             )
 
-        let epochs = 120
         let learningRate = 0.06
         let n =
             Double(
@@ -2192,6 +2194,10 @@ enum BaselineModelEngine {
             )
 
         for _ in 0..<epochs {
+            if Task.isCancelled {
+                break
+            }
+
             var gradient =
                 Array(
                     repeating: 0.0,
@@ -2399,16 +2405,18 @@ enum BaselineModelEngine {
 
         let candidates = [
             0.001,
-            0.005,
-            0.01,
             0.05,
-            0.10,
             0.25,
-            0.50,
             1.00
         ]
 
-        var bestL2 = 0.01
+        let tuningTrain =
+            evenlySample(
+                innerTrain,
+                maximumCount: 2_000
+            )
+
+        var bestL2 = 0.05
         var bestBrier =
             Double.greatestFiniteMagnitude
 
@@ -2416,8 +2424,9 @@ enum BaselineModelEngine {
             let model =
                 trainLogistic(
                     examples:
-                        innerTrain,
-                    l2: l2
+                        tuningTrain,
+                    l2: l2,
+                    epochs: 25
                 )
 
             let probabilities =
@@ -2442,6 +2451,39 @@ enum BaselineModelEngine {
         }
 
         return bestL2
+    }
+
+    private static func evenlySample(
+        _ examples: [Example],
+        maximumCount: Int
+    ) -> [Example] {
+        guard
+            maximumCount > 0,
+            examples.count > maximumCount
+        else {
+            return examples
+        }
+
+        let step =
+            Double(examples.count - 1)
+            / Double(maximumCount - 1)
+
+        return (0..<maximumCount).map {
+            index in
+
+            let sourceIndex =
+                min(
+                    examples.count - 1,
+                    Int(
+                        round(
+                            Double(index)
+                            * step
+                        )
+                    )
+                )
+
+            return examples[sourceIndex]
+        }
     }
 
     private static func fitPlattScaler(
