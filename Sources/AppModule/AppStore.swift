@@ -160,6 +160,20 @@ final class AppStore: ObservableObject {
         "Baseline model not trained yet."
 
     @Published private(set)
+    var baselineTrainingStartedAt: Date?
+
+    @Published private(set)
+    var baselineTrainingDeadline: Date?
+
+    @Published private(set)
+    var baselineLastRunDuration:
+        TimeInterval?
+
+    @Published private(set)
+    var baselineCancellationRequested =
+        false
+
+    @Published private(set)
     var isPreparingBaselineContext = false
 
     @Published private(set)
@@ -227,6 +241,12 @@ final class AppStore: ObservableObject {
     let sessionStartedAt = Date()
 
     private let repository: any BarRepository
+
+    private var baselineTrainingTask:
+        Task<BaselineExperimentResult, Never>?
+
+    private var baselineWatchdogTask:
+        Task<Void, Never>?
 
     private let validationDefaultsKey =
         "MarketSignalLab.UniverseValidation.v2"
@@ -2309,6 +2329,26 @@ final class AppStore: ObservableObject {
         )
     }
 
+    func cancelBaselineTraining() {
+        guard isTrainingBaseline else {
+            return
+        }
+
+        baselineCancellationRequested =
+            true
+
+        baselineTrainingTask?
+            .cancel()
+
+        baselineMessage =
+            "Cancelling baseline training…"
+
+        log(
+            "warning",
+            baselineMessage
+        )
+    }
+
     func trainBaselineModel() async {
         guard let asset = selectedAsset else {
             return
@@ -2368,13 +2408,63 @@ final class AppStore: ObservableObject {
 
         isTrainingBaseline = true
 
+        let startedAt =
+            Date()
+
+        baselineTrainingStartedAt =
+            startedAt
+
+        baselineTrainingDeadline =
+            startedAt.addingTimeInterval(
+                5 * 60
+            )
+
+        baselineLastRunDuration =
+            nil
+
+        baselineCancellationRequested =
+            false
+
         baselineMessage =
-            "Training no-skill and logistic walk-forward baselines for \(asset.symbol)…"
+            "Training bounded baseline experiment for \(asset.symbol)…"
 
         log(
             "info",
             baselineMessage
         )
+
+        baselineWatchdogTask?
+            .cancel()
+
+        baselineWatchdogTask =
+            Task { [weak self] in
+                try? await Task.sleep(
+                    nanoseconds:
+                        300_000_000_000
+                )
+
+                guard
+                    !Task.isCancelled,
+                    let self,
+                    self.isTrainingBaseline
+                else {
+                    return
+                }
+
+                self.baselineCancellationRequested =
+                    true
+
+                self.baselineTrainingTask?
+                    .cancel()
+
+                self.baselineMessage =
+                    "Baseline watchdog stopped training after 5 minutes."
+
+                self.log(
+                    "error",
+                    self.baselineMessage
+                )
+            }
 
         let rows =
             researchRows
@@ -2383,6 +2473,29 @@ final class AppStore: ObservableObject {
             researchFolds
 
         defer {
+            baselineWatchdogTask?
+                .cancel()
+
+            baselineWatchdogTask = nil
+
+            baselineTrainingTask = nil
+
+            if let started =
+                baselineTrainingStartedAt {
+
+                baselineLastRunDuration =
+                    Date()
+                        .timeIntervalSince(
+                            started
+                        )
+            }
+
+            baselineTrainingStartedAt =
+                nil
+
+            baselineTrainingDeadline =
+                nil
+
             isTrainingBaseline = false
         }
 
@@ -2412,8 +2525,8 @@ final class AppStore: ObservableObject {
             )
         }
 
-        let experiment =
-            await Task.detached(
+        let trainingTask =
+            Task.detached(
                 priority:
                     .userInitiated
             ) {
@@ -2429,7 +2542,26 @@ final class AppStore: ObservableObject {
                             contextBars
                     )
             }
-            .value
+
+        baselineTrainingTask =
+            trainingTask
+
+        let experiment =
+            await trainingTask.value
+
+        if trainingTask.isCancelled
+            || baselineCancellationRequested {
+
+            baselineMessage =
+                "Baseline training cancelled. No partial result was saved."
+
+            log(
+                "warning",
+                baselineMessage
+            )
+
+            return
+        }
 
         baselineCandidates =
             experiment.candidates
