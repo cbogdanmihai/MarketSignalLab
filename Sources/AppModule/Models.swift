@@ -90,6 +90,7 @@ enum MarketDataError: LocalizedError {
     case invalidURL
     case badHTTPStatus(Int)
     case rateLimited(message: String, retryAfter: TimeInterval?)
+    case requestTimedOut(seconds: Int)
     case provider(String)
     case decoding(String)
     case invalidTimezone(String)
@@ -108,6 +109,8 @@ enum MarketDataError: LocalizedError {
                 return "Rate limited: \(message) Retry after about \(Int(retryAfter))s."
             }
             return "Rate limited: \(message)"
+        case .requestTimedOut(let seconds):
+            return "Market-data request timed out after \(seconds)s."
         case .provider(let message):
             return message
         case .decoding(let message):
